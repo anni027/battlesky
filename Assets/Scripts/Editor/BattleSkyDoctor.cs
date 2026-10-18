@@ -156,8 +156,21 @@ public static class BattleSkyDoctor
                 Warn($"AsteroidSpawner '{s.name}' is not networked; its asteroids never replicate");
         }
 
-        if (Object.FindFirstObjectByType<NetworkAsteroidSpawner>(FindObjectsInactive.Include) == null)
+        NetworkAsteroidSpawner[] networkSpawners = Object.FindObjectsByType<NetworkAsteroidSpawner>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (networkSpawners.Length == 0)
             Warn("NetworkAsteroidSpawner exists in code but is placed in no scene");
+        foreach (NetworkAsteroidSpawner spawner in networkSpawners)
+        {
+            SerializedProperty prefabs = new SerializedObject(spawner).FindProperty("asteroidPrefabs");
+            if (prefabs != null && prefabs.arraySize == 0)
+                Fail($"NetworkAsteroidSpawner '{spawner.name}' has no asteroid prefabs assigned, so nothing ever spawns");
+
+            NetworkIdentity identity = spawner.GetComponent<NetworkIdentity>();
+            if (identity == null)
+                Fail($"NetworkAsteroidSpawner '{spawner.name}' has no NetworkIdentity, so spawned asteroids never replicate");
+            else if (identity.sceneId == 0)
+                Fail($"NetworkAsteroidSpawner '{spawner.name}' has sceneId 0; scene NetworkIdentities need a non-zero sceneId to keep clients in sync");
+        }
 
         if (!AssetPaths("t:Prefab").Any(p => p.IndexOf("asteroid", StringComparison.OrdinalIgnoreCase) >= 0))
             Fail("No asteroid prefab exists anywhere in Assets, so no spawner can ever produce one");

@@ -103,6 +103,11 @@ public class Projectile : NetworkBehaviour
         if (asteroid != null)
             asteroid.TakeDamage(_damage);
 
+        // Enemy ships fight back - break them too.
+        EnemyShip enemy = col.gameObject.GetComponentInParent<EnemyShip>();
+        if (enemy != null)
+            enemy.TakeDamage(_damage);
+
         if (_impactEffectPrefab != null && col.contactCount > 0)
         {
             ContactPoint contact = col.GetContact(0);

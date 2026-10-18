@@ -21,32 +21,49 @@ public class NetworkPlayer : NetworkBehaviour
     private InputActionAsset _inputAsset;
 
     [Header("Main Engine")]
-    [SerializeField] private float maxThrust = 2800f;
+    [Tooltip("15 m/s^2 at full throttle, applied as ForceMode.Acceleration so hull mass or collider size never change the felt response")]
+    [SerializeField] private float thrustAccel = 15f;
     [SerializeField] private float boostMultiplier = 2.2f;
     [SerializeField] private float boostDuration = 3f;
-    [SerializeField] private float boostCooldown = 6f;
+    [SerializeField] private float boostCooldown = 5f;
 
-    [Header("RCS Torque")]
-    [SerializeField] private float pitchTorque = 1400f;
-    [SerializeField] private float yawTorque = 1100f;
-    [SerializeField] private float rollTorque = 450f;
-    [SerializeField] private float mouseCurve = 0.55f;
-    [SerializeField] private float maxAngularSpeed = 1.4f;
+    [Header("RCS Acceleration")]
+    [Tooltip("10 rad/s^2: pitch reaches its 86 deg/s cap in about 0.24 s")]
+    [SerializeField] private float pitchAccel = 10f;
+    [Tooltip("7.5 rad/s^2: yaw reaches its 57 deg/s cap in about 0.2 s; the A/D keys feed this channel too")]
+    [SerializeField] private float yawAccel = 7.5f;
+    [Tooltip("16 rad/s^2: roll reaches its 137 deg/s cap in about 0.24 s")]
+    [SerializeField] private float rollAccel = 16f;
+    [Tooltip("Mouse pixels accumulated within one 50 Hz step for full deflection. 0.12 is a 400 px/s hand sweep")]
+    [SerializeField] private float mouseSensitivity = 0.12f;
+    [Tooltip("0.6f nonlinear exponent: small deltas give finer aim")]
+    [SerializeField] private float mouseCurve = 0.6f;
 
-    [Header("Keyboard Yaw")]
-    [SerializeField] private float keyboardYawTorque = 1200f;
-    [SerializeField] private float keyboardYawMultiplier = 1.6f;
+    [Header("Angular Rate Limits")]
+    [SerializeField]
+    [Tooltip("86 deg/s in rad/s, applied per ship-local axis")]
+    private float maxPitchRate = 1.5f;
+    [SerializeField]
+    [Tooltip("57 deg/s")]
+    private float maxYawRate = 1.0f;
+    [SerializeField]
+    [Tooltip("137 deg/s")]
+    private float maxRollRate = 2.4f;
 
     [Header("Flight Assist")]
-    [SerializeField] private float flightAssistDamp = 0.91f;
+    [Tooltip("0.92f per 0.02 s step (dt-normalized), about a 0.24 s time constant")]
+    [SerializeField] private float flightAssistDamp = 0.92f;
 
     [Header("Weapons")]
     [SerializeField] private Transform[] firePoints;
     [SerializeField] private GameObject projectilePrefab;
-    [SerializeField] private float muzzleVelocity = 2000f;
-    [SerializeField] private int maxAmmo = 120;
-    [SerializeField] private float reloadTime = 2.5f;
-    [SerializeField] private float fireRate = 6f;
+    [Tooltip("1200 m/s bolt speed (was 20000, which read as an invisible instant hit)")]
+    [SerializeField] private float muzzleVelocity = 1200f;
+    [Tooltip("Meters ahead of the nose the bolt spawns so it never starts inside the hull collider")]
+    [SerializeField] private float muzzleSpawnOffset = 12f;
+    [SerializeField] private int maxAmmo = 180;
+    [SerializeField] private float reloadTime = 1.6f;
+    [SerializeField] private float fireRate = 10f;
 
     [Header("Health")]
     [SerializeField] private float maxHealth = 100f;
@@ -98,6 +115,9 @@ public class NetworkPlayer : NetworkBehaviour
     public bool IsGunnerProxy => crewRole == CrewRole.Gunner;
 
     // Pilot inputs (owner client -> server).
+    // Mouse look accumulates raw delta in Update() and the accumulator is
+    // consumed exactly once per fixed step (ApplyRCSTorque), which makes the
+    // turn rate framerate-independent instead of per-frame additive.
     private Vector2 lookInput;
     private float thrustInput;
     private float yawInput;
@@ -134,7 +154,7 @@ public class NetworkPlayer : NetworkBehaviour
         rb.useGravity = false;
         rb.linearDamping = 0f;
         rb.angularDamping = 0f;
-        rb.mass = 12000f;
+        rb.mass = 2000f;
         rb.inertiaTensor = new Vector3(9000f, 14000f, 3500f);
         rb.inertiaTensorRotation = Quaternion.identity;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
@@ -336,7 +356,11 @@ public class NetworkPlayer : NetworkBehaviour
         if (isDead) return;
         if (IsGunnerProxy)
         {
-            // Proxies never simulate; the crew ship does.
+            // Proxies never simulate; the crew ship does. The server still
+            // mirrors the crew ship's pose onto the proxy so the replicated
+            // position on the gunner's client matches the real ship.
+            if (isServer)
+                FollowCrewShipServer();
             return;
         }
 
@@ -350,8 +374,10 @@ public class NetworkPlayer : NetworkBehaviour
         }
         else if (isLocalPlayer)
         {
-            ApplyPhysics();
+            // Send the accumulated mouse delta before the local prediction
+            // consumes it, so the server receives exactly one copy of it.
             SendInputsToServer();
+            ApplyPhysics();
         }
     }
 
@@ -389,7 +415,7 @@ public class NetworkPlayer : NetworkBehaviour
     private void ProcessInput()
     {
         if (_lookAction != null)
-            lookInput = _lookAction.ReadValue<Vector2>();
+            lookInput += _lookAction.ReadValue<Vector2>();
         if (_thrustAction != null)
             thrustInput = _thrustAction.ReadValue<float>();
         if (_strafeAction != null)
@@ -471,6 +497,18 @@ public class NetworkPlayer : NetworkBehaviour
         transform.rotation = crewShip.transform.rotation;
     }
 
+    /// <summary>
+    /// Server: keeps the gunner proxy parked on the crew ship so the pose that
+    /// replicates to the gunner's client is already correct.
+    /// </summary>
+    private void FollowCrewShipServer()
+    {
+        NetworkPlayer crewShip = FindCrewShipOnServer();
+        if (crewShip == null || crewShip == this)
+            return;
+        transform.SetPositionAndRotation(crewShip.transform.position, crewShip.transform.rotation);
+    }
+
     private NetworkPlayer FindCrewShip()
     {
         NetworkPlayer[] ships = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
@@ -491,7 +529,9 @@ public class NetworkPlayer : NetworkBehaviour
     [Command]
     private void CmdUpdateInput(Vector2 look, float thrust, float yaw, float roll, bool firing, bool shieldHeld, bool boosting, bool assist, Vector3 camForward)
     {
-        lookInput = look;
+        // Accumulate: the server consumes one fixed step's worth at a time,
+        // exactly like the owner's local prediction does.
+        lookInput += look;
         thrustInput = thrust;
         yawInput = yaw;
         rollInput = roll;
@@ -567,10 +607,12 @@ public class NetworkPlayer : NetworkBehaviour
     {
         ApplyMainThrust();
         ApplyRCSTorque();
-        EnforceAngularSpeedCap();
+        EnforceAngularRateLimits();
         if (flightAssist)
         {
-            rb.angularVelocity *= flightAssistDamp;
+            // Damping is authored per 0.02 s step; normalize it to the actual
+            // fixed timestep so the ~0.24 s time constant holds.
+            rb.angularVelocity *= Mathf.Pow(flightAssistDamp, Time.fixedDeltaTime / 0.02f);
         }
 
         bool wantFire = hasGunner ? gunnerFiring : pilotFiring;
@@ -596,11 +638,12 @@ public class NetworkPlayer : NetworkBehaviour
 
     private void ApplyMainThrust()
     {
-        isBoosting = isBoostingInput && IsBoostReady;
+        // Boost only burns while the throttle is actually open, so the ready
+        // bar cannot drain while the pilot is off the throttle.
+        isBoosting = isBoostingInput && IsBoostReady && Mathf.Abs(thrustInput) > 0.01f;
 
-        float currentThrust = isBoosting ? maxThrust * boostMultiplier : maxThrust;
-        Vector3 force = transform.forward * thrustInput * currentThrust;
-        rb.AddRelativeForce(force, ForceMode.Force);
+        float currentAccel = isBoosting ? thrustAccel * boostMultiplier : thrustAccel;
+        rb.AddRelativeForce(Vector3.forward * (thrustInput * currentAccel), ForceMode.Acceleration);
 
         if (isBoosting)
         {
@@ -630,21 +673,33 @@ public class NetworkPlayer : NetworkBehaviour
 
     private void ApplyRCSTorque()
     {
-        float pitchCmd = Mathf.Sign(-lookInput.y) * Mathf.Pow(Mathf.Abs(lookInput.y), mouseCurve);
-        float yawCmd = Mathf.Sign(lookInput.x) * Mathf.Pow(Mathf.Abs(lookInput.x), mouseCurve);
+        // Consume the mouse delta accumulated since the last fixed step.
+        // Sensitivity is per fixed step: ~0.12 means a 400 px/s hand sweep
+        // holds full deflection on any framerate.
+        float px = Mathf.Clamp(lookInput.x * mouseSensitivity, -1f, 1f);
+        float py = Mathf.Clamp(lookInput.y * mouseSensitivity, -1f, 1f);
+        lookInput = Vector2.zero;
 
-        float keyYaw = yawInput * keyboardYawTorque * keyboardYawMultiplier;
-        float totalYaw = (yawCmd * yawTorque) + keyYaw;
-        Vector3 torque = new Vector3(pitchCmd * pitchTorque, totalYaw, -rollInput * rollTorque);
-        rb.AddRelativeTorque(torque, ForceMode.Force);
+        float pitchCmd = Mathf.Sign(-py) * Mathf.Pow(Mathf.Abs(py), mouseCurve);
+        float yawCmd = Mathf.Sign(px) * Mathf.Pow(Mathf.Abs(px), mouseCurve);
+
+        // A/D yaw rides the same channel as the mouse with full authority so
+        // keyboard and mouse both reach the yaw cap.
+        float totalYaw = (yawCmd + yawInput) * yawAccel;
+        Vector3 torque = new Vector3(pitchCmd * pitchAccel, totalYaw, -rollInput * rollAccel);
+        rb.AddRelativeTorque(torque, ForceMode.Acceleration);
     }
 
-    private void EnforceAngularSpeedCap()
+    // Caps each ship-local axis separately instead of capping the combined
+    // magnitude, so yaw/roll are no longer starved to a few deg/s while
+    // pitching.
+    private void EnforceAngularRateLimits()
     {
-        if (rb.angularVelocity.magnitude > maxAngularSpeed)
-        {
-            rb.angularVelocity = rb.angularVelocity.normalized * maxAngularSpeed;
-        }
+        Vector3 local = transform.InverseTransformDirection(rb.angularVelocity);
+        local.x = Mathf.Clamp(local.x, -maxPitchRate, maxPitchRate);
+        local.y = Mathf.Clamp(local.y, -maxYawRate, maxYawRate);
+        local.z = Mathf.Clamp(local.z, -maxRollRate, maxRollRate);
+        rb.angularVelocity = transform.TransformDirection(local);
     }
 
     // ---------- Shields (server-authoritative) ----------
@@ -728,12 +783,15 @@ public class NetworkPlayer : NetworkBehaviour
         else
             shootDirection = firePoint.forward;
 
-        GameObject projectile = Instantiate(projectilePrefab, firePoint.position, Quaternion.LookRotation(shootDirection));
+        // Spawn clear of the hull collider (and of the shield bubble) so the
+        // bolt never starts life overlapping the ship that fired it.
+        Vector3 spawnPosition = firePoint.position + shootDirection * muzzleSpawnOffset;
+        GameObject projectile = Instantiate(projectilePrefab, spawnPosition, Quaternion.LookRotation(shootDirection));
 
         Projectile proj = projectile.GetComponent<Projectile>();
         if (proj != null)
         {
-            proj.Launch(muzzleVelocity, rb.linearVelocity, shootDirection);
+            proj.Launch(muzzleVelocity, rb.linearVelocity, shootDirection, transform);
         }
 
         NetworkServer.Spawn(projectile);

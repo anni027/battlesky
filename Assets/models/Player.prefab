@@ -12,10 +12,9 @@ GameObject:
   - component: {fileID: 4937676727368749414}
   - component: {fileID: 1841972391740092471}
   - component: {fileID: 8861861018160694716}
-  - component: {fileID: 5607269740051703963}
   m_Layer: 0
   m_Name: Camera
-  m_TagString: Untagged
+  m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -138,33 +137,6 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
---- !u!114 &5607269740051703963
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2151753953051786328}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b5e5c22c0fa723a408f118b0ff3716c0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ShipCameraRig
-  shipRoot: {fileID: 0}
-  flightModel: {fileID: 0}
-  inputHandler: {fileID: 0}
-  pilotInputHandler: {fileID: 0}
-  cameraTransform: {fileID: 3225839075355616191}
-  stretchPerSpeed: 0.12
-  maxStretch: 8
-  stretchLerpSpeed: 4
-  returnLerpSpeed: 8
-  rollMultiplier: 0.3
-  rollLerpSpeed: 4
-  rollReturnLerpSpeed: 8
-  freeLookSensitivity: 2
-  freeLookPitchLimit: 55
-  freeLookReturnSpeed: 8
 --- !u!1 &2383112811349064997
 GameObject:
   m_ObjectHideFlags: 0
@@ -178,6 +150,8 @@ GameObject:
   - component: {fileID: 4510573344346190029}
   - component: {fileID: 8580900237576361346}
   - component: {fileID: 996745916285244344}
+  - component: {fileID: 8117523316429061306}
+  - component: {fileID: 8448299858403570893}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -210,7 +184,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2383112811349064997}
   serializedVersion: 5
-  m_Mass: 1
+  m_Mass: 2000
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -262,25 +236,27 @@ MonoBehaviour:
   syncMode: 0
   syncInterval: 0
   _inputAsset: {fileID: -944628639613478452, guid: e4c42b790010d9c49ad4b7379dece416, type: 3}
-  maxThrust: 9000
+  thrustAccel: 15
   boostMultiplier: 2.2
   boostDuration: 3
-  boostCooldown: 6
-  pitchTorque: 9000
-  yawTorque: 1100
-  rollTorque: 450
-  mouseCurve: 0.55
-  maxAngularSpeed: 1.4
-  keyboardYawTorque: 1200
-  keyboardYawMultiplier: 1.6
-  flightAssistDamp: 0.91
+  boostCooldown: 5
+  pitchAccel: 10
+  yawAccel: 7.5
+  rollAccel: 16
+  mouseSensitivity: 0.12
+  mouseCurve: 0.6
+  maxPitchRate: 1.5
+  maxYawRate: 1
+  maxRollRate: 2.4
+  flightAssistDamp: 0.92
   firePoints:
   - {fileID: 5478454971137233501}
   projectilePrefab: {fileID: 1132141501487463321, guid: 0455f3f93242c604cb19ff50b7af5baa, type: 3}
-  muzzleVelocity: 20000
-  maxAmmo: 120
-  reloadTime: 2.5
-  fireRate: 6
+  muzzleVelocity: 1200
+  muzzleSpawnOffset: 12
+  maxAmmo: 180
+  reloadTime: 1.6
+  fireRate: 10
   maxHealth: 100
   deathDelay: 2
   shieldMaxEnergy: 100
@@ -289,9 +265,9 @@ MonoBehaviour:
   shieldRechargeDelay: 3
   shieldMesh: {fileID: 7850098298560922830}
   shieldRotationSpeed: 45
-  crewRole: 1
+  crewRole: 0
   crewId: 0
-  hasGunner: 1
+  hasGunner: 0
 --- !u!114 &996745916285244344
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -310,6 +286,61 @@ MonoBehaviour:
   _rechargeDelay: 3
   _shieldMesh: {fileID: 7850098298560922830}
   _rotationSpeed: 45
+--- !u!114 &8117523316429061306
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2383112811349064997}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cb803efbe62c34d7baece46c9ffebad9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Mirror.Components::Mirror.NetworkRigidbodyReliable
+  syncDirection: 0
+  syncMode: 0
+  syncInterval: 0
+  target: {fileID: 1925755707408182524}
+  syncPosition: 1
+  syncRotation: 1
+  syncScale: 0
+  onlySyncOnChange: 1
+  compressRotation: 1
+  interpolatePosition: 1
+  interpolateRotation: 1
+  interpolateScale: 1
+  coordinateSpace: 0
+  timelineOffset: 1
+  showGizmos: 0
+  showOverlay: 0
+  overlayColor: {r: 0, g: 0, b: 0, a: 0.5}
+  onlySyncOnChangeCorrectionMultiplier: 2
+  useFixedUpdate: 0
+  rotationSensitivity: 0.01
+  positionPrecision: 0.01
+  scalePrecision: 0.01
+--- !u!65 &8448299858403570893
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2383112811349064997}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 16.781107, y: 4.778985, z: 15.868555}
+  m_Center: {x: -0.6842022, y: -8.702725, z: 26.811768}
 --- !u!1 &7258312171715765436
 GameObject:
   m_ObjectHideFlags: 0
@@ -352,7 +383,6 @@ GameObject:
   - component: {fileID: 5998431174178704936}
   - component: {fileID: 6318429230870103783}
   - component: {fileID: 1353271746528110917}
-  - component: {fileID: 7199709274484044244}
   - component: {fileID: 7096866160850728796}
   m_Layer: 0
   m_Name: shield
@@ -433,27 +463,6 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!135 &7199709274484044244
-SphereCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7850098298560922830}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Radius: 0.5
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &7096866160850728796
 MonoBehaviour:
   m_ObjectHideFlags: 0

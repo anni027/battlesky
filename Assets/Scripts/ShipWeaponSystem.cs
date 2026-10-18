@@ -20,22 +20,26 @@ public class ShipWeaponSystem : MonoBehaviour
     private Camera _aimCamera;
 
     [SerializeField]
-    [Tooltip("2000f m/s, added to ship velocity")]
-    private float _muzzleVelocity = 2000f;
+    [Tooltip("1200f m/s, added to ship velocity")]
+    private float _muzzleVelocity = 1200f;
+
+    [SerializeField]
+    [Tooltip("Meters ahead of the muzzle the bolt spawns so it never starts inside the hull collider")]
+    private float _muzzleSpawnOffset = 12f;
 
     [Header("Ammo")]
     [SerializeField]
-    [Tooltip("120")]
-    private int _maxAmmo = 120;
+    [Tooltip("180")]
+    private int _maxAmmo = 180;
 
     [SerializeField]
-    [Tooltip("2.5f seconds")]
-    private float _reloadTime = 2.5f;
+    [Tooltip("1.6f seconds")]
+    private float _reloadTime = 1.6f;
 
     [Header("Fire Rate")]
     [SerializeField]
-    [Tooltip("6f rounds per second")]
-    private float _fireRate = 6f;
+    [Tooltip("10f rounds per second")]
+    private float _fireRate = 10f;
 
     private int _currentAmmo;
     private float _fireCooldown;
@@ -122,12 +126,12 @@ public class ShipWeaponSystem : MonoBehaviour
             shootDirection = cam != null ? cam.transform.forward : firePoint.forward;
         }
 
-        GameObject projectile = Instantiate(_projectilePrefab, firePoint.position, Quaternion.LookRotation(shootDirection));
+        GameObject projectile = Instantiate(_projectilePrefab, firePoint.position + shootDirection * _muzzleSpawnOffset, Quaternion.LookRotation(shootDirection));
 
         Projectile proj = projectile.GetComponent<Projectile>();
         if (proj != null)
         {
-            proj.Launch(_muzzleVelocity, _shipRigidbody.linearVelocity, shootDirection);
+            proj.Launch(_muzzleVelocity, _shipRigidbody.linearVelocity, shootDirection, transform);
         }
 
         _currentAmmo--;

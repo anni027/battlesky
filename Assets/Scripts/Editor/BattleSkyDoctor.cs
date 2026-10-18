@@ -97,8 +97,11 @@ public static class BattleSkyDoctor
             && prefab.GetComponentInChildren<NetworkPlayer>(true) == null)
             Warn($"{path} has no ShipInputHandler, so ShipInputHandler-driven components cannot work");
 
-        if (prefab.GetComponentInChildren<ShipHealth>(true) == null)
-            Fail($"{path} has no ShipHealth, but FloatingAsteroid only deals damage through ShipHealth - collisions heal nothing");
+        // Bolt hits and asteroid collisions must land on something: the
+        // standalone path uses ShipHealth, the networked path NetworkPlayer.
+        if (prefab.GetComponentInChildren<ShipHealth>(true) == null
+            && prefab.GetComponentInChildren<NetworkPlayer>(true) == null)
+            Fail($"{path} has neither ShipHealth nor NetworkPlayer, so bolt and asteroid hits deal no damage");
 
         if (prefab.GetComponentInChildren<ShipWeaponSystem>(true) == null)
             Warn($"{path} has no ShipWeaponSystem; only NetworkPlayer supplies weapons");

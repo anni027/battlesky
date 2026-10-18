@@ -1,4 +1,5 @@
 using UnityEngine;
+using Mirror;
 
 public class FloatingAsteroid : MonoBehaviour
 {
@@ -33,14 +34,22 @@ public class FloatingAsteroid : MonoBehaviour
 
     private void OnCollisionEnter(Collision col)
     {
-        ShipHealth shipHealth = col.gameObject.GetComponent<ShipHealth>();
+        // Networked asteroids are server-authoritative: client copies are
+        // kinematic puppets, so only the server resolves collision damage.
+        NetworkIdentity identity = GetComponent<NetworkIdentity>();
+        if (identity != null && !identity.isServer)
+            return;
+
+        // GetComponentInParent so hull colliders on child objects still
+        // resolve to the ship they belong to.
+        ShipHealth shipHealth = col.gameObject.GetComponentInParent<ShipHealth>();
         if (shipHealth != null)
         {
             shipHealth.TakeDamage(_collisionDamage);
             return;
         }
 
-        NetworkPlayer netPlayer = col.gameObject.GetComponent<NetworkPlayer>();
+        NetworkPlayer netPlayer = col.gameObject.GetComponentInParent<NetworkPlayer>();
         if (netPlayer != null)
         {
             netPlayer.TakeDamage(_collisionDamage);

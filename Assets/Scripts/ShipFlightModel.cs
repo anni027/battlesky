@@ -9,8 +9,8 @@ public class ShipFlightModel : MonoBehaviour
 
     [Header("Main Engine")]
     [SerializeField]
-    [Tooltip("2800f")]
-    private float _maxThrust = 2800f;
+    [Tooltip("15 m/s^2 at full throttle, applied as ForceMode.Acceleration")]
+    private float _thrustAccel = 15f;
 
     [SerializeField]
     [Tooltip("2.2f")]
@@ -21,44 +21,51 @@ public class ShipFlightModel : MonoBehaviour
     private float _boostDuration = 3f;
 
     [SerializeField]
-    [Tooltip("6f seconds before boost is available again")]
-    private float _boostCooldown = 6f;
+    [Tooltip("5f seconds before boost is available again")]
+    private float _boostCooldown = 5f;
 
-    
-
-    [Header("RCS Torque")]
+    [Header("RCS Acceleration")]
     [SerializeField]
-    [Tooltip("900f")]
-    private float _pitchTorque = 1400f;
+    [Tooltip("10 rad/s^2: pitch reaches its cap in about 0.24 s")]
+    private float _pitchAccel = 10f;
 
     [SerializeField]
-    [Tooltip("700f")]
-    private float _yawTorque = 1100f;
+    [Tooltip("7.5 rad/s^2: yaw reaches its cap in about 0.2 s; A/D keys use this channel")]
+    private float _yawAccel = 7.5f;
 
     [SerializeField]
-    [Tooltip("450f")]
-    private float _rollTorque = 450f;
+    [Tooltip("16 rad/s^2: roll reaches its cap in about 0.24 s")]
+    private float _rollAccel = 16f;
 
     [SerializeField]
-    [Tooltip("0.65f nonlinear exponent, 0.5–0.8 range")]
-    private float _mouseCurve = 0.55f;
+    [Tooltip("Mouse pixels per 50 Hz step for full deflection (0.12 ~ 400 px/s sweep)")]
+    private float _mouseSensitivity = 0.12f;
 
     [SerializeField]
-    [Tooltip("0.8f rad/s hard cap")]
-    private float _maxAngularSpeed = 1.4f;
+    [Tooltip("0.6f nonlinear exponent, 0.5-0.8 range")]
+    private float _mouseCurve = 0.6f;
 
-    [Header("Keyboard Yaw")]
-    [SerializeField] private float keyboardYawTorque = 1200f;
-    [SerializeField] private float keyboardYawMultiplier = 1.6f;
+    [SerializeField]
+    [Tooltip("1.5f rad/s (86 deg/s) pitch cap")]
+    private float _maxPitchRate = 1.5f;
+
+    [SerializeField]
+    [Tooltip("1.0f rad/s (57 deg/s) yaw cap")]
+    private float _maxYawRate = 1.0f;
+
+    [SerializeField]
+    [Tooltip("2.4f rad/s (137 deg/s) roll cap")]
+    private float _maxRollRate = 2.4f;
 
     [Header("Flight Assist")]
     [SerializeField]
-    [Tooltip("0.91f multiplied against angularVelocity each FixedUpdate")]
-    private float _flightAssistDamp = 0.91f;
+    [Tooltip("0.92f per 0.02 s step, dt-normalized (~0.24 s time constant)")]
+    private float _flightAssistDamp = 0.92f;
 
     private float _boostTimer;
     private float _cooldownTimer;
     private bool _isBoosting;
+    private Vector2 _lookAccum;
 
     public float BoostCooldownNormalized { get; private set; }
     public bool IsBoostReady { get; private set; } = true;
@@ -69,7 +76,7 @@ public class ShipFlightModel : MonoBehaviour
         _rb.useGravity = false;
         _rb.linearDamping = 0f;
         _rb.angularDamping = 0f;
-        _rb.mass = 12000f;
+        _rb.mass = 2000f;
         _rb.inertiaTensor = new Vector3(9000f, 14000f, 3500f);
         _rb.inertiaTensorRotation = Quaternion.identity;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
@@ -87,6 +94,14 @@ public class ShipFlightModel : MonoBehaviour
     private bool FreeLookHeld => _pilot != null ? _pilot.IsFreeLooking : (_handler != null && _handler.IsFreeLooking);
     private bool AssistOn => _pilot != null ? _pilot.FlightAssist : (_handler == null || _handler.FlightAssist);
 
+    private void Update()
+    {
+        // Accumulate raw mouse delta so the turn rate no longer depends on the
+        // framerate the deltas are sampled at.
+        if (!FreeLookHeld)
+            _lookAccum += LookValue;
+    }
+
     private void FixedUpdate()
     {
         ApplyMainThrust();
@@ -94,18 +109,22 @@ public class ShipFlightModel : MonoBehaviour
         {
             ApplyRCSTorque();
         }
-        EnforceAngularSpeedCap();
+        else
+        {
+            _lookAccum = Vector2.zero;
+        }
+        EnforceAngularRateLimits();
         ApplyFlightAssist();
     }
 
     private void ApplyMainThrust()
     {
-        _isBoosting = BoostHeld && IsBoostReady;
+        // Boost only burns while the throttle is open.
+        _isBoosting = BoostHeld && IsBoostReady && Mathf.Abs(ThrustValue) > 0.01f;
 
-        float currentThrust = _isBoosting ? _maxThrust * _boostMultiplier : _maxThrust;
+        float currentAccel = _isBoosting ? _thrustAccel * _boostMultiplier : _thrustAccel;
 
-        Vector3 force = transform.forward * ThrustValue * currentThrust;
-        _rb.AddRelativeForce(force, ForceMode.Force);
+        _rb.AddRelativeForce(Vector3.forward * (ThrustValue * currentAccel), ForceMode.Acceleration);
 
         if (_isBoosting)
         {
@@ -135,28 +154,34 @@ public class ShipFlightModel : MonoBehaviour
 
     private void ApplyRCSTorque()
     {
-        Vector2 lookInput = LookValue;
-        float pitchCmd = Mathf.Sign(-lookInput.y) * Mathf.Pow(Mathf.Abs(lookInput.y), _mouseCurve);
-        float yawCmd = Mathf.Sign(lookInput.x) * Mathf.Pow(Mathf.Abs(lookInput.x), _mouseCurve);
+        float px = Mathf.Clamp(_lookAccum.x * _mouseSensitivity, -1f, 1f);
+        float py = Mathf.Clamp(_lookAccum.y * _mouseSensitivity, -1f, 1f);
+        _lookAccum = Vector2.zero;
 
-        float keyYaw = YawValue * keyboardYawTorque * keyboardYawMultiplier;
-        float totalYaw = (yawCmd * _yawTorque) + keyYaw;
-        Vector3 torque = new Vector3(pitchCmd * _pitchTorque, totalYaw, -RollValue * _rollTorque);
-        _rb.AddRelativeTorque(torque, ForceMode.Force);
+        float pitchCmd = Mathf.Sign(-py) * Mathf.Pow(Mathf.Abs(py), _mouseCurve);
+        float yawCmd = Mathf.Sign(px) * Mathf.Pow(Mathf.Abs(px), _mouseCurve);
+
+        // A/D yaw rides the same channel as the mouse with full authority.
+        float totalYaw = (yawCmd + YawValue) * _yawAccel;
+        Vector3 torque = new Vector3(pitchCmd * _pitchAccel, totalYaw, -RollValue * _rollAccel);
+        _rb.AddRelativeTorque(torque, ForceMode.Acceleration);
     }
 
-    private void EnforceAngularSpeedCap()
+    // Per-axis caps in ship-local space so yaw and roll keep full authority
+    // while pitching.
+    private void EnforceAngularRateLimits()
     {
-        if (_rb.angularVelocity.magnitude > _maxAngularSpeed)
-        {
-            _rb.angularVelocity = _rb.angularVelocity.normalized * _maxAngularSpeed;
-        }
+        Vector3 local = transform.InverseTransformDirection(_rb.angularVelocity);
+        local.x = Mathf.Clamp(local.x, -_maxPitchRate, _maxPitchRate);
+        local.y = Mathf.Clamp(local.y, -_maxYawRate, _maxYawRate);
+        local.z = Mathf.Clamp(local.z, -_maxRollRate, _maxRollRate);
+        _rb.angularVelocity = transform.TransformDirection(local);
     }
 
     private void ApplyFlightAssist()
     {
         if (!AssistOn) return;
-        _rb.angularVelocity *= _flightAssistDamp;
+        _rb.angularVelocity *= Mathf.Pow(_flightAssistDamp, Time.fixedDeltaTime / 0.02f);
     }
 
     public Vector3 ShipVelocity => _rb.linearVelocity;

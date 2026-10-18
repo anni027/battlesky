@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Mirror;
 using UnityEditor;
@@ -15,14 +16,16 @@ public static class BattleSkyLaserTune
 {
     const string PlayerPrefabPath = "Assets/models/Player.prefab";
     const string BulletPrefabPath = "Assets/models/bullet.prefab";
+    const string AsteroidLargePrefabPath = "Assets/models/Asteroid_Large.prefab";
+    const string AsteroidSmallPrefabPath = "Assets/models/Asteroid_Small.prefab";
     const string ScenePath = "Assets/Scenes/SampleScene.unity";
     const string MaterialPath = "Assets/models/BattleSkyLaserBolt.mat";
     const string ClipPath = "Assets/models/BattleSkyLaserPew.wav";
     const string VolumeProfilePath = "Assets/Settings/SampleSceneProfile.asset";
 
-    // Fast enough to cross a 300m duel in ~0.1s, slow enough to render as a moving bolt.
-    const float MuzzleVelocity = 3000f;
-    const float LifetimeSeconds = 1.5f;
+    // Fast enough to cross a 300m duel in ~0.25s, slow enough to render as a moving bolt.
+    const float MuzzleVelocity = 1200f;
+    const float LifetimeSeconds = 2f;
 
     // Hot orange-red core; values >1 are written to the HDR buffer so the existing
     // Bloom (threshold 1) haloes it without needing an emissive keyword.
@@ -98,9 +101,15 @@ public static class BattleSkyLaserTune
 
             // Server owns the bolt. The old NetworkTransformReliable ran with
             // syncDirection=ClientToServer, so NetworkIdentity never serialized it.
+            // NetworkRigidbodyReliable derives from NetworkTransformReliable, so
+            // keep the correct component and only drop genuinely stale ones.
             foreach (NetworkTransformReliable stale in root.GetComponents<NetworkTransformReliable>())
+            {
+                if (stale is NetworkRigidbodyReliable) continue;
                 Object.DestroyImmediate(stale);
-            var netRb = root.AddComponent<NetworkRigidbodyReliable>();
+            }
+            var netRb = root.GetComponent<NetworkRigidbodyReliable>();
+            if (netRb == null) netRb = root.AddComponent<NetworkRigidbodyReliable>();
             netRb.target = root.transform;
             netRb.syncDirection = SyncDirection.ServerToClient;
             netRb.syncPosition = true;
@@ -113,7 +122,7 @@ public static class BattleSkyLaserTune
                 throw new InvalidOperationException($"{BulletPrefabPath} has no source mesh");
 
             // Bright head. Uniform scale only: a non-uniform root would break the Rigidbody.
-            root.transform.localScale = new Vector3(0.45f, 0.45f, 0.45f);
+            root.transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
             MeshRenderer headRenderer = root.GetComponent<MeshRenderer>();
             if (headRenderer == null) headRenderer = root.AddComponent<MeshRenderer>();
             ApplyLaserMaterial(headRenderer, mat);
@@ -198,23 +207,52 @@ public static class BattleSkyLaserTune
         SerializedProperty spawnPrefabs = so.FindProperty("spawnPrefabs");
         if (spawnPrefabs == null) throw new InvalidOperationException("NetworkManager.spawnPrefabs not found");
 
-        GameObject bullet = AssetDatabase.LoadAssetAtPath<GameObject>(BulletPrefabPath);
-        if (bullet == null) throw new InvalidOperationException($"Missing prefab at {BulletPrefabPath}");
+        // Keep whatever is registered (the crew ship, asteroids, ..) and only make
+        // sure the bolt is there. Clearing the list used to drop every asteroid.
+        var wanted = new List<Object>();
+        for (int i = 0; i < spawnPrefabs.arraySize; i++)
+        {
+            Object entry = spawnPrefabs.GetArrayElementAtIndex(i).objectReferenceValue;
+            if (entry != null && !wanted.Contains(entry)) wanted.Add(entry);
+        }
 
-        spawnPrefabs.ClearArray();
-        spawnPrefabs.arraySize = 1;
-        spawnPrefabs.GetArrayElementAtIndex(0).objectReferenceValue = bullet;
+        AddPrefabIfMissing(wanted, BulletPrefabPath);
+        AddPrefabIfMissing(wanted, AsteroidLargePrefabPath);
+        AddPrefabIfMissing(wanted, AsteroidSmallPrefabPath);
+
+        spawnPrefabs.arraySize = wanted.Count;
+        for (int i = 0; i < wanted.Count; i++)
+            spawnPrefabs.GetArrayElementAtIndex(i).objectReferenceValue = wanted[i];
         so.ApplyModifiedPropertiesWithoutUndo();
 
         EditorSceneManager.SaveScene(scene);
-        Debug.Log($"[Laser] {ScenePath}: spawnPrefabs -> {BulletPrefabPath}");
+        Debug.Log($"[Laser] {ScenePath}: spawnPrefabs -> {wanted.Count} entry(ies)");
+    }
+
+    static void AddPrefabIfMissing(List<Object> wanted, string path)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        if (prefab == null)
+        {
+            Debug.LogWarning($"[Laser] skipping missing prefab {path}");
+            return;
+        }
+        if (!wanted.Contains(prefab)) wanted.Add(prefab);
     }
 
     static void TuneBloom()
     {
         var profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(VolumeProfilePath);
-        if (profile == null) throw new InvalidOperationException($"Missing volume profile at {VolumeProfilePath}");
-        if (!profile.TryGet(out Bloom bloom)) throw new InvalidOperationException("Volume profile has no Bloom");
+        if (profile == null)
+        {
+            Debug.LogWarning($"[Laser] no volume profile at {VolumeProfilePath}; skipping bloom tune");
+            return;
+        }
+        if (!profile.TryGet(out Bloom bloom))
+        {
+            Debug.LogWarning("[Laser] volume profile has no Bloom override; skipping bloom tune");
+            return;
+        }
 
         bloom.intensity.overrideState = true;
         bloom.intensity.value = 0.6f;

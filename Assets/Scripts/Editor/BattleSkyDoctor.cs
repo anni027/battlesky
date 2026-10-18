@@ -26,6 +26,7 @@ public static class BattleSkyDoctor
         CheckRegisteredSpawnables();
         CheckPlayerPrefab();
         CheckAsteroidSpawner();
+        CheckHud();
         CheckMissingScripts();
         CheckDeadScripts();
         Debug.Log($"=== BattleSkyDoctor done: {_issues} issue(s) ===");
@@ -160,6 +161,21 @@ public static class BattleSkyDoctor
 
         if (!AssetPaths("t:Prefab").Any(p => p.IndexOf("asteroid", StringComparison.OrdinalIgnoreCase) >= 0))
             Fail("No asteroid prefab exists anywhere in Assets, so no spawner can ever produce one");
+    }
+
+    static void CheckHud()
+    {
+        NetworkHUD hud = Object.FindFirstObjectByType<NetworkHUD>(FindObjectsInactive.Include);
+        if (hud == null)
+        {
+            Warn("No NetworkHUD in the scene, so players never see hull/shield/ammo readouts");
+            return;
+        }
+
+        if (hud.GetComponentInParent<Canvas>(true) == null)
+            Fail($"NetworkHUD on '{hud.name}' has no Canvas ancestor, so its bars never render");
+        else
+            Debug.Log($"[Doctor] NetworkHUD on '{hud.name}'");
     }
 
     static void CheckMissingScripts()

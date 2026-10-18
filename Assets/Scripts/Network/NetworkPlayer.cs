@@ -106,6 +106,7 @@ public class NetworkPlayer : NetworkBehaviour
     public float BoostCooldownNormalized { get; private set; } = 1f;
     public bool IsBoostReady { get; private set; } = true;
     public int CurrentAmmo => currentAmmo;
+    public int MaxAmmo => maxAmmo;
     public bool IsReloading => isReloading;
     public float ReloadProgress => reloadProgress;
     public float HealthNormalized => maxHealth > 0 ? currentHealth / maxHealth : 0f;
@@ -509,7 +510,12 @@ public class NetworkPlayer : NetworkBehaviour
         transform.SetPositionAndRotation(crewShip.transform.position, crewShip.transform.rotation);
     }
 
-    private NetworkPlayer FindCrewShip()
+    /// <summary>
+    /// Client-side lookup of the shared crew ship: the non-proxy NetworkPlayer
+    /// with the same crewId. Null on the crew ship itself, before the crew is
+    /// assigned, or while the crew ship is not spawned yet on this client.
+    /// </summary>
+    public NetworkPlayer FindCrewShip()
     {
         NetworkPlayer[] ships = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
         foreach (NetworkPlayer s in ships)

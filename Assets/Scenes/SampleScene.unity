@@ -458,6 +458,7 @@ GameObject:
   - component: {fileID: 597677650}
   - component: {fileID: 597677649}
   - component: {fileID: 597677648}
+  - component: {fileID: 525252500}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -465,6 +466,18 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
+--- !u!114 &525252500
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 597677647}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b41f6c8d20374e5f9a8b7c6d5e4f3012, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BattleSky.Network.NetworkHUD
 --- !u!114 &597677648
 MonoBehaviour:
   m_ObjectHideFlags: 0

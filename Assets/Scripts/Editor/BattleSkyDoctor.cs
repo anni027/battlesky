@@ -174,6 +174,14 @@ public static class BattleSkyDoctor
 
         if (!AssetPaths("t:Prefab").Any(p => p.IndexOf("asteroid", StringComparison.OrdinalIgnoreCase) >= 0))
             Fail("No asteroid prefab exists anywhere in Assets, so no spawner can ever produce one");
+
+        foreach (string path in new[] { "Assets/models/Asteroid_Large.prefab", "Assets/models/Asteroid_Small.prefab" })
+        {
+            GameObject asteroid = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (asteroid == null) { Fail($"Missing asteroid prefab {path}"); continue; }
+            if (asteroid.GetComponent<NetworkAsteroid>() == null)
+                Fail($"{path} has no NetworkAsteroid, so bullets cannot destroy it");
+        }
     }
 
     static void CheckHud()

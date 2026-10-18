@@ -722,10 +722,10 @@ MonoBehaviour:
   asteroidPrefabs:
   - {fileID: 200001, guid: e5bfaf6172809a0b8d6e7f8091a2b3c4, type: 3}
   - {fileID: 300001, guid: f6c0b0728391a0b8c7d8e9f0a1b2c3d4, type: 3}
-  spawnRate: 0.8
-  maxAsteroids: 40
-  spawnRadius: 300
-  despawnRadius: 400
+  spawnRate: 5
+  maxAsteroids: 160
+  spawnRadius: 260
+  despawnRadius: 380
 --- !u!114 &1265363317
 MonoBehaviour:
   m_ObjectHideFlags: 0

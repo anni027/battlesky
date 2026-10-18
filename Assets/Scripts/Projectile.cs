@@ -1,5 +1,6 @@
 using UnityEngine;
 using Mirror;
+using BattleSky.Network;
 
 public class Projectile : NetworkBehaviour
 {
@@ -96,6 +97,11 @@ public class Projectile : NetworkBehaviour
             if (netPlayer != null)
                 netPlayer.TakeDamage(_damage);
         }
+
+        // Asteroids are destructible too - the server breaks them apart.
+        NetworkAsteroid asteroid = col.gameObject.GetComponentInParent<NetworkAsteroid>();
+        if (asteroid != null)
+            asteroid.TakeDamage(_damage);
 
         if (_impactEffectPrefab != null && col.contactCount > 0)
         {

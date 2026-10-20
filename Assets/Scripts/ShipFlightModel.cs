@@ -62,6 +62,14 @@ public class ShipFlightModel : MonoBehaviour
     [Tooltip("0.92f per 0.02 s step, dt-normalized (~0.24 s time constant)")]
     private float _flightAssistDamp = 0.92f;
 
+    [Header("Auto-Forward")]
+    [SerializeField]
+    [Tooltip("Constant forward acceleration applied every step so the ship always drifts forward")]
+    private float _baseForwardAccel = 5f;
+    [SerializeField]
+    [Tooltip("Auto-forward drift stops accelerating once forward speed reaches this (m/s)")]
+    private float _driftMaxSpeed = 40f;
+
     private float _boostTimer;
     private float _cooldownTimer;
     private bool _isBoosting;
@@ -124,7 +132,20 @@ public class ShipFlightModel : MonoBehaviour
 
         float currentAccel = _isBoosting ? _thrustAccel * _boostMultiplier : _thrustAccel;
 
-        _rb.AddRelativeForce(Vector3.forward * (ThrustValue * currentAccel), ForceMode.Acceleration);
+        // Constant auto-forward drift so the ship always moves forward even
+        // with no throttle input. The drift is capped so speed stays bounded.
+        float thrust;
+        if (Mathf.Abs(ThrustValue) > 0.01f)
+        {
+            thrust = ThrustValue * currentAccel;
+        }
+        else
+        {
+            float forwardSpeed = Vector3.Dot(_rb.linearVelocity, transform.forward);
+            thrust = forwardSpeed < _driftMaxSpeed ? _baseForwardAccel : 0f;
+        }
+        if (Mathf.Abs(thrust) > 0.0001f)
+            _rb.AddRelativeForce(Vector3.forward * thrust, ForceMode.Acceleration);
 
         if (_isBoosting)
         {

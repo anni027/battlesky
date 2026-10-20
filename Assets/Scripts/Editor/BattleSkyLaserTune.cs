@@ -27,10 +27,13 @@ public static class BattleSkyLaserTune
     const float MuzzleVelocity = 1200f;
     const float LifetimeSeconds = 2f;
 
-    // Hot orange-red core; values >1 are written to the HDR buffer so the existing
-    // Bloom (threshold 1) haloes it without needing an emissive keyword.
-    static readonly Color BoltColor = new Color(2.2f, 0.75f, 0.28f, 1f);
-    static readonly Color BoltLight = new Color(1f, 0.55f, 0.25f, 1f);
+    // Hot plasma core; HDR values write to the HDR buffer so Bloom haloes it.
+    static readonly Color BoltColor = new Color(3f, 0.9f, 0.3f, 1f);
+    static readonly Color BoltLight = new Color(1f, 0.6f, 0.3f, 1f);
+
+    // Sci-fi laser beam: bright cyan-white core with blue outer glow.
+    static readonly Color BeamCore = new Color(0.4f, 0.8f, 1f, 1f);
+    static readonly Color BeamGlow = new Color(0.2f, 0.5f, 1f, 1f);
 
     [MenuItem("BattleSky/Apply Laser Bolt")]
     public static void Apply()
@@ -254,19 +257,31 @@ public static class BattleSkyLaserTune
             return;
         }
 
+        // Stronger sci-fi bloom so laser bolts glow and halo realistically.
         bloom.intensity.overrideState = true;
-        bloom.intensity.value = 0.6f;
+        bloom.intensity.value = 1.2f;
         bloom.threshold.overrideState = true;
-        bloom.threshold.value = 1f;
+        bloom.threshold.value = 0.7f;
+        bloom.scatter.overrideState = true;
+        bloom.scatter.value = 0.7f;
+        bloom.clamp.overrideState = true;
+        bloom.clamp.value = 65472f;
+
         EditorUtility.SetDirty(bloom);
-        Debug.Log($"[Laser] {VolumeProfilePath}: Bloom intensity -> 0.6 (was 0.25)");
+        Debug.Log($"[Laser] {VolumeProfilePath}: Bloom intensity -> 1.2, threshold -> 0.7 (sci-fi glow)");
     }
 
     static void EnsureMaterial()
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
-        if (shader == null) throw new InvalidOperationException("No usable unlit shader for the laser bolt");
+        // Use the custom sci-fi laser shader with HDR emissive glow.
+        Shader shader = Shader.Find("BattleSky/SciFi Laser");
+        if (shader == null)
+        {
+            Debug.LogWarning("[Laser] BattleSky/SciFi Laser shader not found, falling back to URP Unlit.");
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (shader == null) shader = Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (shader == null) throw new InvalidOperationException("No usable shader for the laser bolt");
+        }
 
         Material mat = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
         if (mat == null)
@@ -275,10 +290,15 @@ public static class BattleSkyLaserTune
             AssetDatabase.CreateAsset(mat, MaterialPath);
         }
 
-        if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", BoltColor);
-        if (mat.HasProperty("_Color")) mat.SetColor("_Color", BoltColor);
+        if (mat.HasProperty("_CoreColor")) mat.SetColor("_CoreColor", BoltColor);
+        if (mat.HasProperty("_GlowColor")) mat.SetColor("_GlowColor", BoltLight);
+        if (mat.HasProperty("_GlowIntensity")) mat.SetFloat("_GlowIntensity", 4f);
+        if (mat.HasProperty("_CoreWidth")) mat.SetFloat("_CoreWidth", 0.4f);
+        if (mat.HasProperty("_ScrollSpeed")) mat.SetFloat("_ScrollSpeed", 6f);
+        if (mat.HasProperty("_RimColor")) mat.SetColor("_RimColor", new Color(1f, 0.9f, 0.6f, 1f));
+        if (mat.HasProperty("_RimPower")) mat.SetFloat("_RimPower", 3f);
         EditorUtility.SetDirty(mat);
-        Debug.Log($"[Laser] material {MaterialPath} color -> {BoltColor}");
+        Debug.Log($"[Laser] material {MaterialPath} shader -> {shader.name}, sci-fi plasma colors");
     }
 
     static void EnsureClip()

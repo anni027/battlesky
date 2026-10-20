@@ -15,6 +15,13 @@ public static class BattleSkyDoctor
     static KeyValuePair<string, string>[] _assetText;
     static readonly string[] SkipTrees = { "Assets/Mirror/", "Assets/Ultimate 10 Plus Shaders/", "Assets/_Recovery/" };
 
+    const string CapitalPath = "Assets/models/CapitalShip.prefab";
+    const string DeathStarPath = "Assets/models/DeathStar.prefab";
+    const string PlayerStarWarsPath = "Assets/models/Player_StarWars.prefab";
+    const string BulletPath = "Assets/models/bullet.prefab";
+    const string AsteroidLargePath = "Assets/models/Asteroid_Large.prefab";
+    const string AsteroidSmallPath = "Assets/models/Asteroid_Small.prefab";
+
     // CLI: Unity.exe -batchmode -nographics -quit -executeMethod BattleSkyDoctor.Run
     // Exits nonzero when any invariant fails so shell callers can branch on it.
     public static void Run()
@@ -26,7 +33,9 @@ public static class BattleSkyDoctor
         CheckRegisteredSpawnables();
         CheckPlayerPrefab();
         CheckAsteroidSpawner();
+        CheckLevelSystem();
         CheckHud();
+        CheckMenuAndBoss();
         CheckMissingScripts();
         CheckDeadScripts();
         Debug.Log($"=== BattleSkyDoctor done: {_issues} issue(s) ===");
@@ -184,6 +193,71 @@ public static class BattleSkyDoctor
         }
     }
 
+    static void CheckLevelSystem()
+    {
+        // Level manager must exist in the scene.
+        var levelMgr = Object.FindFirstObjectByType<NetworkLevelManager>(FindObjectsInactive.Include);
+        if (levelMgr == null)
+            Warn("No NetworkLevelManager in the scene, so level progression will not run");
+
+        // Capital ship and Death Star prefabs must exist.
+        var capital = AssetDatabase.LoadAssetAtPath<GameObject>(CapitalPath);
+        if (capital == null)
+            Warn("Missing CapitalShip.prefab - Level 2 will have no capital ships");
+        else if (capital.GetComponent<CapitalShip>() == null)
+            Fail("CapitalShip.prefab has no CapitalShip component");
+
+        var deathStar = AssetDatabase.LoadAssetAtPath<GameObject>(DeathStarPath);
+        if (deathStar == null)
+            Warn("Missing DeathStar.prefab - Level 3 will have no Death Star boss");
+        else if (deathStar.GetComponent<DeathStar>() == null)
+            Fail("DeathStar.prefab has no DeathStar component");
+
+        // Player_StarWars prefab should exist.
+        var starWars = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/models/Player_StarWars.prefab");
+        if (starWars == null)
+            Warn("Missing Player_StarWars.prefab - run BattleSky/Create Star Wars Player Ship");
+
+        // Enemy spawner must reference capital + death star.
+        var enemySpawner = Object.FindFirstObjectByType<NetworkEnemySpawner>(FindObjectsInactive.Include);
+        if (enemySpawner != null)
+        {
+            var so = new SerializedObject(enemySpawner);
+            var capitalProp = so.FindProperty("capitalShipPrefab");
+            var deathStarProp = so.FindProperty("deathStarPrefab");
+            if (capitalProp != null && capitalProp.objectReferenceValue == null)
+                Warn("NetworkEnemySpawner has no capitalShipPrefab assigned");
+            if (deathStarProp != null && deathStarProp.objectReferenceValue == null)
+                Warn("NetworkEnemySpawner has no deathStarPrefab assigned");
+        }
+        else
+        {
+            Warn("No NetworkEnemySpawner in the scene - enemies will not spawn");
+        }
+
+        // Asteroid spawner should exist for the asteroid field.
+        var asteroidSpawner = Object.FindFirstObjectByType<NetworkAsteroidSpawner>(FindObjectsInactive.Include);
+        if (asteroidSpawner == null)
+        {
+            Warn("No NetworkAsteroidSpawner in the scene - asteroids will not spawn");
+        }
+
+        // NetworkManager must register all level spawnables.
+        var nm = Object.FindFirstObjectByType<NetworkManager>(FindObjectsInactive.Include);
+        if (nm != null)
+        {
+            var required = new[] { CapitalPath, DeathStarPath, PlayerStarWarsPath, BulletPath, AsteroidLargePath, AsteroidSmallPath };
+            foreach (var path in required)
+            {
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (prefab == null) continue;
+                bool registered = (nm.playerPrefab == prefab) || nm.spawnPrefabs.Contains(prefab);
+                if (!registered)
+                    Warn($"NetworkManager does not register spawnable: {path}");
+            }
+        }
+    }
+
     static void CheckHud()
     {
         NetworkHUD hud = Object.FindFirstObjectByType<NetworkHUD>(FindObjectsInactive.Include);
@@ -197,6 +271,82 @@ public static class BattleSkyDoctor
             Fail($"NetworkHUD on '{hud.name}' has no Canvas ancestor, so its bars never render");
         else
             Debug.Log($"[Doctor] NetworkHUD on '{hud.name}'");
+    }
+
+    static void CheckMenuAndBoss()
+    {
+        // --- main menu ---------------------------------------------------
+        var canvas = Object.FindFirstObjectByType<Canvas>(FindObjectsInactive.Include);
+        if (canvas == null)
+        {
+            Fail("No Canvas in the scene, so neither the HUD nor the main menu can render");
+        }
+        else
+        {
+            var menu = canvas.GetComponent<BattleSky.Network.MainMenuUI>();
+            if (menu == null)
+                Fail("No MainMenuUI on the Canvas, so players never get a menu to host or join from");
+            else
+                Debug.Log("[Doctor] MainMenuUI present");
+        }
+
+        // --- transport port ----------------------------------------------
+        var nm = Object.FindFirstObjectByType<NetworkManager>(FindObjectsInactive.Include);
+        if (nm != null)
+        {
+            var kcp = nm.GetComponent<kcp2k.KcpTransport>();
+            if (kcp == null)
+                Warn("NetworkManager has no KCP transport, so the port cannot be changed");
+            else if (kcp.port == 7777)
+                Fail("Transport is still on the default port 7777 - change it so players stop colliding with other servers");
+            else
+                Debug.Log($"[Doctor] transport port = {kcp.port}");
+
+            var stockHud = nm.GetComponent<Mirror.NetworkManagerHUD>();
+            if (stockHud != null && stockHud.enabled)
+                Warn("Mirror's stock NetworkManagerHUD is enabled and draws over the BattleSky menu");
+        }
+
+        // --- replicated level state --------------------------------------
+        var levelMgr = Object.FindFirstObjectByType<BattleSky.Network.NetworkLevelManager>(FindObjectsInactive.Include);
+        if (levelMgr != null)
+        {
+            var identity = levelMgr.GetComponent<NetworkIdentity>();
+            if (identity == null)
+                Fail("NetworkLevelManager has no NetworkIdentity, so clients never learn the current level");
+            else if (identity.sceneId == 0)
+                Fail("NetworkLevelManager has sceneId 0, so its SyncVars never reach the clients");
+        }
+
+        // --- boss API ------------------------------------------------------
+        Type boss = typeof(BattleSky.Network.DeathStar);
+        if (boss.GetProperty("Active", BindingFlags.Public | BindingFlags.Static) == null)
+            Fail("DeathStar has no static Active property, so the HUD cannot show the boss bar");
+        if (boss.GetProperty("IsChargingSuperlaser") == null)
+            Fail("DeathStar has no IsChargingSuperlaser property, so the superlaser warning cannot be shown");
+        if (boss.GetMethod("HandleProjectileHit", new[] { typeof(Vector3), typeof(float) }) == null)
+            Fail("DeathStar has no HandleProjectileHit(Vector3,float), so the exhaust port weak point cannot work");
+
+        var bossPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DeathStarPath);
+        if (bossPrefab != null && bossPrefab.transform.Find("ExhaustPortAnchor") == null)
+            Fail("DeathStar.prefab has no ExhaustPortAnchor, so the weak point has nowhere to live");
+
+        // --- air brake input ------------------------------------------------
+        var actions = AssetDatabase.LoadAssetAtPath<UnityEngine.InputSystem.InputActionAsset>(
+            "Assets/Scripts/ShipInputActions.inputactions");
+        if (actions == null)
+        {
+            Warn("ShipInputActions.inputactions could not be loaded");
+        }
+        else
+        {
+            var shipMap = actions.FindActionMap("Ship", false);
+            var airBrake = shipMap != null ? shipMap.FindAction("AirBrake", false) : null;
+            if (airBrake == null)
+                Fail("Ship/AirBrake action is missing, so the air brake cannot be bound");
+            else if (!airBrake.bindings.Any(b => b.path == "<Keyboard>/leftCtrl"))
+                Fail("Ship/AirBrake is not bound to left ctrl");
+        }
     }
 
     static void CheckMissingScripts()

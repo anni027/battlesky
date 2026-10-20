@@ -5,12 +5,22 @@ public class FloatingAsteroid : MonoBehaviour
 {
     [Header("Movement")]
     [SerializeField]
-    [Tooltip("2f initial linear speed assigned on spawn")]
-    private float _driftSpeed = 2f;
+    [Tooltip("Base initial linear speed assigned on spawn (m/s)")]
+    private float _driftSpeed = 4f;
 
     [SerializeField]
-    [Tooltip("15f degrees per second, random axis")]
-    private float _tumbleSpeed = 15f;
+    [Range(0f, 0.9f)]
+    [Tooltip("Random +/- fraction applied to the drift speed so rocks move at different rates")]
+    private float _driftSpeedJitter = 0.6f;
+
+    [SerializeField]
+    [Tooltip("Base tumble rate in degrees per second, random axis")]
+    private float _tumbleSpeed = 20f;
+
+    [SerializeField]
+    [Range(0f, 0.9f)]
+    [Tooltip("Random +/- fraction applied to the tumble rate")]
+    private float _tumbleSpeedJitter = 0.6f;
 
     [Header("Damage")]
     [SerializeField]
@@ -27,8 +37,10 @@ public class FloatingAsteroid : MonoBehaviour
             _rb.useGravity = false;
             _rb.linearDamping = 0f;
             _rb.angularDamping = 0f;
-            _rb.linearVelocity = Random.onUnitSphere * _driftSpeed;
-            _rb.angularVelocity = Random.onUnitSphere * (_tumbleSpeed * Mathf.Deg2Rad);
+            float drift = _driftSpeed * Random.Range(1f - _driftSpeedJitter, 1f + _driftSpeedJitter);
+            float tumble = _tumbleSpeed * Random.Range(1f - _tumbleSpeedJitter, 1f + _tumbleSpeedJitter);
+            _rb.linearVelocity = Random.onUnitSphere * drift;
+            _rb.angularVelocity = Random.onUnitSphere * (tumble * Mathf.Deg2Rad);
         }
     }
 

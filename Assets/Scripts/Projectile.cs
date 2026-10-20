@@ -108,6 +108,21 @@ public class Projectile : NetworkBehaviour
         if (enemy != null)
             enemy.TakeDamage(_damage);
 
+        // Level 2 capital ships and the Level 3 Death Star use their own health.
+        CapitalShip capital = col.gameObject.GetComponentInParent<CapitalShip>();
+        if (capital != null)
+            capital.TakeDamage(_damage);
+
+        DeathStar deathStar = col.gameObject.GetComponentInParent<DeathStar>();
+        if (deathStar != null)
+        {
+            // The boss needs to know where the bolt landed: a hit next to the
+            // glowing exhaust port destroys it, everything else only chips the
+            // armour.
+            Vector3 hitPoint = col.contactCount > 0 ? col.GetContact(0).point : col.transform.position;
+            deathStar.HandleProjectileHit(hitPoint, _damage);
+        }
+
         if (_impactEffectPrefab != null && col.contactCount > 0)
         {
             ContactPoint contact = col.GetContact(0);

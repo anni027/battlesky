@@ -25,12 +25,12 @@ public class ShipTurret : MonoBehaviour
     private float _turnSpeed = 120f;
 
     [SerializeField]
-    [Tooltip("60 deg up/down")]
-    private float _pitchLimit = 60f;
+    [Tooltip("90 deg up/down")]
+    private float _pitchLimit = 90f;
 
     [SerializeField]
-    [Tooltip("120 deg left/right from center")]
-    private float _yawLimit = 120f;
+    [Tooltip("180 deg left/right from center")]
+    private float _yawLimit = 180f;
 
     [SerializeField]
     [Tooltip("8 deg/s return to center when no gunner")]

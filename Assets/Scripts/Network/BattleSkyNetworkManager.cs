@@ -21,6 +21,10 @@ namespace BattleSky.Network
         [Header("Player Ship Prefab")]
         [SerializeField] private GameObject playerShipPrefab;
 
+        [Header("Level Prefabs")]
+        [SerializeField] private GameObject capitalShipPrefab;
+        [SerializeField] private GameObject deathStarPrefab;
+
         [Header("Co-op Crews")]
         [SerializeField]
         [Tooltip("When true, connections are paired Pilot+Gunner per ship. When false, every connection gets a solo ship.")]
@@ -34,6 +38,29 @@ namespace BattleSky.Network
         {
             base.Awake();
             singleton = this;
+            WireLevelPrefabs();
+        }
+
+        void WireLevelPrefabs()
+        {
+#if UNITY_EDITOR
+            var spawner = FindAnyObjectByType<NetworkEnemySpawner>();
+            if (spawner != null)
+            {
+                var so = new UnityEditor.SerializedObject(spawner);
+                if (capitalShipPrefab != null)
+                {
+                    var p = so.FindProperty("capitalShipPrefab");
+                    if (p != null) { p.objectReferenceValue = capitalShipPrefab; }
+                }
+            if (deathStarPrefab != null)
+            {
+                var p = so.FindProperty("deathStarPrefab");
+                if (p != null) { p.objectReferenceValue = deathStarPrefab; }
+            }
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+#endif
         }
 
         private void OnValidate()

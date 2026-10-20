@@ -147,6 +147,24 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
                     ""initialStateCheck"": false
                 },
                 {
+                    ""name"": ""Brake"",
+                    ""type"": ""Button"",
+                    ""id"": ""8dcd5326-5a59-4521-8c65-cfc62c1c5053"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""AirBrake"",
+                    ""type"": ""Button"",
+                    ""id"": ""d55b4cc6-80ff-460a-a6d5-02faf67afb0a"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
                     ""name"": ""Shield"",
                     ""type"": ""Button"",
                     ""id"": ""74c2505d-2782-45f6-b770-21aeb2ca629e"",
@@ -309,6 +327,50 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
+                    ""id"": ""217c3ada-493a-4e3b-872b-31d85e241f62"",
+                    ""path"": ""<Keyboard>/x"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Brake"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""95b8b5a4-0688-4a29-9e5a-ca9c0eaeefe3"",
+                    ""path"": ""<Gamepad>/buttonEast"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Brake"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""20557118-3868-4247-90a7-715cb19c7dc8"",
+                    ""path"": ""<Keyboard>/leftCtrl"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""AirBrake"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""a088617c-1eb4-4a8e-9bcb-46d60eaf74a6"",
+                    ""path"": ""<Gamepad>/leftShoulder"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""AirBrake"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
                     ""id"": ""f9b75e04-67a6-4312-b6ea-347cc144b626"",
                     ""path"": ""<Keyboard>/space"",
                     ""interactions"": """",
@@ -386,6 +448,24 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
                     ""name"": ""Boost"",
                     ""type"": ""Button"",
                     ""id"": ""f13f42ca-500b-4672-a65b-c12ff251484a"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""Brake"",
+                    ""type"": ""Button"",
+                    ""id"": ""1fe87fc0-a5c6-45cd-a8e5-353df1ce7cf3"",
+                    ""expectedControlType"": """",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""AirBrake"",
+                    ""type"": ""Button"",
+                    ""id"": ""74cb609c-9d31-4b8f-9db2-91e25b49d493"",
                     ""expectedControlType"": """",
                     ""processors"": """",
                     ""interactions"": """",
@@ -529,6 +609,50 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""groups"": """",
                     ""action"": ""Boost"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""7a35a375-532d-4280-91ad-50646084e3ad"",
+                    ""path"": ""<Keyboard>/x"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Brake"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""8aa6c3d6-cbcd-40dd-b3bb-887cbf479fa5"",
+                    ""path"": ""<Gamepad>/buttonEast"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Brake"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""10154799-e86b-46c3-b327-c32f545f5c65"",
+                    ""path"": ""<Keyboard>/leftCtrl"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""AirBrake"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""88b05999-e782-46d8-ad9c-c813a5fa4b76"",
+                    ""path"": ""<Gamepad>/leftShoulder"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""AirBrake"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 },
@@ -699,6 +823,17 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
+                    ""id"": ""919a224b-82a2-42e6-8da5-f7266d5214ee"",
+                    ""path"": ""<Mouse>/leftButton"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""Fire"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
                     ""id"": ""b5d524ad-1daf-4751-a061-759e9b7cf595"",
                     ""path"": ""<Gamepad>/rightTrigger"",
                     ""interactions"": """",
@@ -787,6 +922,8 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
         m_Ship_Roll = m_Ship.FindAction("Roll", throwIfNotFound: true);
         m_Ship_Fire = m_Ship.FindAction("Fire", throwIfNotFound: true);
         m_Ship_Boost = m_Ship.FindAction("Boost", throwIfNotFound: true);
+        m_Ship_Brake = m_Ship.FindAction("Brake", throwIfNotFound: true);
+        m_Ship_AirBrake = m_Ship.FindAction("AirBrake", throwIfNotFound: true);
         m_Ship_Shield = m_Ship.FindAction("Shield", throwIfNotFound: true);
         m_Ship_FreeLook = m_Ship.FindAction("FreeLook", throwIfNotFound: true);
         m_Ship_FlightAssist = m_Ship.FindAction("FlightAssist", throwIfNotFound: true);
@@ -797,6 +934,8 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
         m_Pilot_Look = m_Pilot.FindAction("Look", throwIfNotFound: true);
         m_Pilot_Roll = m_Pilot.FindAction("Roll", throwIfNotFound: true);
         m_Pilot_Boost = m_Pilot.FindAction("Boost", throwIfNotFound: true);
+        m_Pilot_Brake = m_Pilot.FindAction("Brake", throwIfNotFound: true);
+        m_Pilot_AirBrake = m_Pilot.FindAction("AirBrake", throwIfNotFound: true);
         m_Pilot_FreeLook = m_Pilot.FindAction("FreeLook", throwIfNotFound: true);
         m_Pilot_FlightAssist = m_Pilot.FindAction("FlightAssist", throwIfNotFound: true);
         // Gunner
@@ -893,6 +1032,8 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
     private readonly InputAction m_Ship_Roll;
     private readonly InputAction m_Ship_Fire;
     private readonly InputAction m_Ship_Boost;
+    private readonly InputAction m_Ship_Brake;
+    private readonly InputAction m_Ship_AirBrake;
     private readonly InputAction m_Ship_Shield;
     private readonly InputAction m_Ship_FreeLook;
     private readonly InputAction m_Ship_FlightAssist;
@@ -931,6 +1072,14 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "Ship/Boost".
         /// </summary>
         public InputAction @Boost => m_Wrapper.m_Ship_Boost;
+        /// <summary>
+        /// Provides access to the underlying input action "Ship/Brake".
+        /// </summary>
+        public InputAction @Brake => m_Wrapper.m_Ship_Brake;
+        /// <summary>
+        /// Provides access to the underlying input action "Ship/AirBrake".
+        /// </summary>
+        public InputAction @AirBrake => m_Wrapper.m_Ship_AirBrake;
         /// <summary>
         /// Provides access to the underlying input action "Ship/Shield".
         /// </summary>
@@ -987,6 +1136,12 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
             @Boost.started += instance.OnBoost;
             @Boost.performed += instance.OnBoost;
             @Boost.canceled += instance.OnBoost;
+            @Brake.started += instance.OnBrake;
+            @Brake.performed += instance.OnBrake;
+            @Brake.canceled += instance.OnBrake;
+            @AirBrake.started += instance.OnAirBrake;
+            @AirBrake.performed += instance.OnAirBrake;
+            @AirBrake.canceled += instance.OnAirBrake;
             @Shield.started += instance.OnShield;
             @Shield.performed += instance.OnShield;
             @Shield.canceled += instance.OnShield;
@@ -1025,6 +1180,12 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
             @Boost.started -= instance.OnBoost;
             @Boost.performed -= instance.OnBoost;
             @Boost.canceled -= instance.OnBoost;
+            @Brake.started -= instance.OnBrake;
+            @Brake.performed -= instance.OnBrake;
+            @Brake.canceled -= instance.OnBrake;
+            @AirBrake.started -= instance.OnAirBrake;
+            @AirBrake.performed -= instance.OnAirBrake;
+            @AirBrake.canceled -= instance.OnAirBrake;
             @Shield.started -= instance.OnShield;
             @Shield.performed -= instance.OnShield;
             @Shield.canceled -= instance.OnShield;
@@ -1076,6 +1237,8 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
     private readonly InputAction m_Pilot_Look;
     private readonly InputAction m_Pilot_Roll;
     private readonly InputAction m_Pilot_Boost;
+    private readonly InputAction m_Pilot_Brake;
+    private readonly InputAction m_Pilot_AirBrake;
     private readonly InputAction m_Pilot_FreeLook;
     private readonly InputAction m_Pilot_FlightAssist;
     /// <summary>
@@ -1109,6 +1272,14 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "Pilot/Boost".
         /// </summary>
         public InputAction @Boost => m_Wrapper.m_Pilot_Boost;
+        /// <summary>
+        /// Provides access to the underlying input action "Pilot/Brake".
+        /// </summary>
+        public InputAction @Brake => m_Wrapper.m_Pilot_Brake;
+        /// <summary>
+        /// Provides access to the underlying input action "Pilot/AirBrake".
+        /// </summary>
+        public InputAction @AirBrake => m_Wrapper.m_Pilot_AirBrake;
         /// <summary>
         /// Provides access to the underlying input action "Pilot/FreeLook".
         /// </summary>
@@ -1158,6 +1329,12 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
             @Boost.started += instance.OnBoost;
             @Boost.performed += instance.OnBoost;
             @Boost.canceled += instance.OnBoost;
+            @Brake.started += instance.OnBrake;
+            @Brake.performed += instance.OnBrake;
+            @Brake.canceled += instance.OnBrake;
+            @AirBrake.started += instance.OnAirBrake;
+            @AirBrake.performed += instance.OnAirBrake;
+            @AirBrake.canceled += instance.OnAirBrake;
             @FreeLook.started += instance.OnFreeLook;
             @FreeLook.performed += instance.OnFreeLook;
             @FreeLook.canceled += instance.OnFreeLook;
@@ -1190,6 +1367,12 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
             @Boost.started -= instance.OnBoost;
             @Boost.performed -= instance.OnBoost;
             @Boost.canceled -= instance.OnBoost;
+            @Brake.started -= instance.OnBrake;
+            @Brake.performed -= instance.OnBrake;
+            @Brake.canceled -= instance.OnBrake;
+            @AirBrake.started -= instance.OnAirBrake;
+            @AirBrake.performed -= instance.OnAirBrake;
+            @AirBrake.canceled -= instance.OnAirBrake;
             @FreeLook.started -= instance.OnFreeLook;
             @FreeLook.performed -= instance.OnFreeLook;
             @FreeLook.canceled -= instance.OnFreeLook;
@@ -1408,6 +1591,20 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnBoost(InputAction.CallbackContext context);
         /// <summary>
+        /// Method invoked when associated input action "Brake" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnBrake(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "AirBrake" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnAirBrake(InputAction.CallbackContext context);
+        /// <summary>
         /// Method invoked when associated input action "Shield" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
         /// </summary>
         /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
@@ -1471,6 +1668,20 @@ public partial class @ShipInputActions: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnBoost(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "Brake" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnBrake(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "AirBrake" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnAirBrake(InputAction.CallbackContext context);
         /// <summary>
         /// Method invoked when associated input action "FreeLook" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
         /// </summary>

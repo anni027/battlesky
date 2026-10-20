@@ -61,6 +61,24 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "Brake",
+                    "type": "Button",
+                    "id": "8dcd5326-5a59-4521-8c65-cfc62c1c5053",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "AirBrake",
+                    "type": "Button",
+                    "id": "d55b4cc6-80ff-460a-a6d5-02faf67afb0a",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "Shield",
                     "type": "Button",
                     "id": "74c2505d-2782-45f6-b770-21aeb2ca629e",
@@ -223,6 +241,50 @@
                 },
                 {
                     "name": "",
+                    "id": "217c3ada-493a-4e3b-872b-31d85e241f62",
+                    "path": "<Keyboard>/x",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Brake",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "95b8b5a4-0688-4a29-9e5a-ca9c0eaeefe3",
+                    "path": "<Gamepad>/buttonEast",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Brake",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "20557118-3868-4247-90a7-715cb19c7dc8",
+                    "path": "<Keyboard>/leftCtrl",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "AirBrake",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "a088617c-1eb4-4a8e-9bcb-46d60eaf74a6",
+                    "path": "<Gamepad>/leftShoulder",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "AirBrake",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
                     "id": "f9b75e04-67a6-4312-b6ea-347cc144b626",
                     "path": "<Keyboard>/space",
                     "interactions": "",
@@ -300,6 +362,24 @@
                     "name": "Boost",
                     "type": "Button",
                     "id": "f13f42ca-500b-4672-a65b-c12ff251484a",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Brake",
+                    "type": "Button",
+                    "id": "1fe87fc0-a5c6-45cd-a8e5-353df1ce7cf3",
+                    "expectedControlType": "",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "AirBrake",
+                    "type": "Button",
+                    "id": "74cb609c-9d31-4b8f-9db2-91e25b49d493",
                     "expectedControlType": "",
                     "processors": "",
                     "interactions": "",
@@ -443,6 +523,50 @@
                     "processors": "",
                     "groups": "",
                     "action": "Boost",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "7a35a375-532d-4280-91ad-50646084e3ad",
+                    "path": "<Keyboard>/x",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Brake",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "8aa6c3d6-cbcd-40dd-b3bb-887cbf479fa5",
+                    "path": "<Gamepad>/buttonEast",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Brake",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "10154799-e86b-46c3-b327-c32f545f5c65",
+                    "path": "<Keyboard>/leftCtrl",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "AirBrake",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "88b05999-e782-46d8-ad9c-c813a5fa4b76",
+                    "path": "<Gamepad>/leftShoulder",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "AirBrake",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },
@@ -604,6 +728,17 @@
                     "name": "",
                     "id": "80e5690d-7b34-4771-bb92-a45616d556f1",
                     "path": "<Mouse>/rightButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "",
+                    "action": "Fire",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "919a224b-82a2-42e6-8da5-f7266d5214ee",
+                    "path": "<Mouse>/leftButton",
                     "interactions": "",
                     "processors": "",
                     "groups": "",

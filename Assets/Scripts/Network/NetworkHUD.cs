@@ -1,3 +1,4 @@
+using System.Globalization;
 using Mirror;
 using UnityEngine;
 using UnityEngine.UI;
@@ -47,6 +48,40 @@ namespace BattleSky.Network
         [Tooltip("Bar chase speed in 1/s; 0 snaps instantly")]
         public float smoothing = 14f;
 
+        [Header("Role Block (top-left)")]
+        [Tooltip("Top-left offset of the local role label + control hints")]
+        public Vector2 roleBlockOffset = new Vector2(24f, -22f);
+        [Tooltip("Width of the hint area; the solo pilot line needs room for brake, air brake and free-look")]
+        public float roleBlockWidth = 660f;
+        public int roleFontSize = 16;
+        public int hintFontSize = 12;
+
+        [Header("Flight Status (bottom-centre)")]
+        [Tooltip("Offset from the bottom-centre screen edge")]
+        public Vector2 statusOffset = new Vector2(0f, 28f);
+        public float statusWidth = 320f;
+        public int statusFontSize = 15;
+
+        [Header("Gunner Reticle")]
+        [Tooltip("Gap between the screen centre and each crosshair tick (px)")]
+        public float reticleGap = 9f;
+        [Tooltip("Length of each crosshair tick (px)")]
+        public float reticleArmLength = 7f;
+        public float reticleThickness = 2f;
+        public Color reticleColor = new Color(1f, 1f, 1f, 0.65f);
+
+        [Header("Mission Banner (top-centre)")]
+        [Tooltip("Offset from the top-centre screen edge")]
+        public Vector2 objectiveOffset = new Vector2(0f, -16f);
+        public float objectiveWidth = 640f;
+        public int objectiveFontSize = 15;
+        [Tooltip("Width of the boss integrity bar")]
+        public float bossBarWidth = 420f;
+        public float bossBarHeight = 12f;
+        public Color objectiveColor = new Color(0.86f, 0.92f, 1f, 1f);
+        public Color bossBarColor = new Color(1f, 0.36f, 0.3f, 1f);
+        public Color warningColor = new Color(1f, 0.72f, 0.2f, 1f);
+
         private const float ReloadStripGap = 4f;
 
         private RectTransform _root;
@@ -57,6 +92,20 @@ namespace BattleSky.Network
         private Text _hullValue;
         private Text _shieldValue;
         private Text _ammoValue;
+        private RectTransform _roleRoot;
+        private Text _roleLabel;
+        private Text _roleHints;
+        private Text _roleStatus;
+        private RectTransform _statusRoot;
+        private Text _statusText;
+        private RectTransform _reticleRoot;
+        private RectTransform _objectiveRoot;
+        private Text _objectiveText;
+        private RectTransform _bossRoot;
+        private Image _bossFill;
+        private Text _bossLabel;
+        private Text _bossWarning;
+        private Image _bossChargeFill;
         private Sprite _square;
         private Texture2D _squareTexture;
         private Font _font;
@@ -84,6 +133,16 @@ namespace BattleSky.Network
             if (_target == null && Time.unscaledTime >= _nextBindTime)
                 Bind(ResolveLocalTarget());
 
+            // The role block and the reticle follow the local player, not the
+            // bound ship: a gunner proxy still needs to see GUNNER even while
+            // the crew ship has not replicated yet.
+            NetworkPlayer local = ResolveLocalPlayer();
+            UpdateRoleBlock(local);
+            UpdateReticle(local);
+            UpdateStatusReadout();
+            UpdateMissionBanner();
+            UpdateBossBar();
+
             bool visible = _target != null;
             if (_root.gameObject.activeSelf != visible)
                 _root.gameObject.SetActive(visible);
@@ -98,12 +157,20 @@ namespace BattleSky.Network
         /// </summary>
         public static NetworkPlayer ResolveLocalTarget()
         {
-            NetworkPlayer local = NetworkClient.localPlayer != null
-                ? NetworkClient.localPlayer.GetComponent<NetworkPlayer>()
-                : null;
+            NetworkPlayer local = ResolveLocalPlayer();
             if (local == null)
                 return null;
             return local.IsGunnerProxy ? local.FindCrewShip() : local;
+        }
+
+        /// <summary>
+        /// The local crew member's own NetworkPlayer, gunner proxy included.
+        /// Null before spawn (menu, server, editor).
+        /// </summary>
+        public static NetworkPlayer ResolveLocalPlayer()
+        {
+            NetworkIdentity identity = NetworkClient.localPlayer;
+            return identity != null ? identity.GetComponent<NetworkPlayer>() : null;
         }
 
         /// <summary>Bind a ship (null hides the panel) and snap the bars to its values.</summary>
@@ -198,6 +265,402 @@ namespace BattleSky.Network
             _shieldFill = CreateBar("Shield", "SHIELD", new Vector2(padding, y), contentWidth, out _shieldValue);
             y += barHeight + rowGap;
             _hullFill = CreateBar("Hull", "HULL", new Vector2(padding, y), contentWidth, out _hullValue);
+
+            BuildRoleBlock();
+            BuildReticle();
+            BuildStatusReadout();
+            BuildMissionBanner();
+            BuildBossBar();
+        }
+
+        /// <summary>
+        /// Small top-left block with the local crew member's seat and the keys
+        /// that seat actually owns. The hints follow the real bindings in
+        /// ShipInputActions: Ship map (W/S thrust, A/D yaw, mouse steer,
+        /// Q/E roll, Fire, leftShift boost, X brake, leftCtrl air brake,
+        /// Space shield, R reload,
+        /// LeftAlt free-look, G flight assist) and Gunner map (mouse-aimed
+        /// camera, RMB fire, Space shield, R reload). Pilot fire is ignored
+        /// while a gunner is aboard, so the pilot hint drops the weapon keys in
+        /// that case.
+        /// </summary>
+        private void BuildRoleBlock()
+        {
+            var roleGo = new GameObject("HudRoleBlock", typeof(RectTransform));
+            _roleRoot = (RectTransform)roleGo.transform;
+            _roleRoot.SetParent(transform, false);
+            _roleRoot.anchorMin = new Vector2(0f, 1f);
+            _roleRoot.anchorMax = new Vector2(0f, 1f);
+            _roleRoot.pivot = new Vector2(0f, 1f);
+            _roleRoot.anchoredPosition = roleBlockOffset;
+
+            // The hint line is authored with one explicit break, so reserve two
+            // wrapped lines before the crew status line.
+            float hintY = -(roleFontSize + 4f);
+            float hintLine = hintFontSize + 4f;
+            float statusY = hintY - hintLine * 2f - 2f;
+            _roleRoot.sizeDelta = new Vector2(roleBlockWidth, -statusY + hintFontSize + 6f);
+
+            _roleLabel = CreateTopLeftText(_roleRoot, "RoleLabel", 0f, roleFontSize);
+            _roleHints = CreateTopLeftText(_roleRoot, "RoleHints", hintY, hintFontSize);
+            _roleStatus = CreateTopLeftText(_roleRoot, "RoleStatus", statusY, hintFontSize - 1);
+            _roleRoot.gameObject.SetActive(false);
+        }
+
+        /// <summary>
+        /// Four short ticks around the screen centre. The gunner's camera
+        /// forward is the aim direction sent to the crew ship, so screen
+        /// centre is the aim point. Shown only for the local gunner: the pilot
+        /// steers the ship itself and needs no reticle.
+        /// </summary>
+        private void BuildReticle()
+        {
+            var reticleGo = new GameObject("GunnerReticle", typeof(RectTransform));
+            _reticleRoot = (RectTransform)reticleGo.transform;
+            _reticleRoot.SetParent(transform, false);
+            _reticleRoot.anchorMin = new Vector2(0.5f, 0.5f);
+            _reticleRoot.anchorMax = new Vector2(0.5f, 0.5f);
+            _reticleRoot.pivot = new Vector2(0.5f, 0.5f);
+            _reticleRoot.anchoredPosition = Vector2.zero;
+            _reticleRoot.sizeDelta = Vector2.zero;
+
+            float inner = reticleGap + reticleArmLength * 0.5f;
+            CreateReticleTick("ReticleTop", new Vector2(0f, inner), new Vector2(reticleThickness, reticleArmLength));
+            CreateReticleTick("ReticleBottom", new Vector2(0f, -inner), new Vector2(reticleThickness, reticleArmLength));
+            CreateReticleTick("ReticleLeft", new Vector2(-inner, 0f), new Vector2(reticleArmLength, reticleThickness));
+            CreateReticleTick("ReticleRight", new Vector2(inner, 0f), new Vector2(reticleArmLength, reticleThickness));
+            _reticleRoot.gameObject.SetActive(false);
+        }
+
+        /// <summary>
+        /// Small bottom-centre strip with the shared crew ship's speed and,
+        /// while level 1 is still running, the distance to the checkpoint
+        /// gate. Pilot and gunner both see it because both read the same
+        /// crew ship. An AIR BRAKE tag is appended while the air brake is
+        /// held.
+        /// </summary>
+        private void BuildStatusReadout()
+        {
+            var statusGo = new GameObject("HudStatus", typeof(RectTransform));
+            _statusRoot = (RectTransform)statusGo.transform;
+            _statusRoot.SetParent(transform, false);
+            _statusRoot.anchorMin = new Vector2(0.5f, 0f);
+            _statusRoot.anchorMax = new Vector2(0.5f, 0f);
+            _statusRoot.pivot = new Vector2(0.5f, 0f);
+            _statusRoot.anchoredPosition = statusOffset;
+            _statusRoot.sizeDelta = new Vector2(statusWidth, statusFontSize + padding * 2f);
+
+            Image panel = statusGo.AddComponent<Image>();
+            panel.sprite = _square;
+            panel.color = panelColor;
+            panel.raycastTarget = false;
+
+            _statusText = CreateStatusText(_statusRoot);
+            _statusRoot.gameObject.SetActive(false);
+        }
+
+        private Text CreateStatusText(RectTransform parent)
+        {
+            RectTransform rect = CreateRect(parent, "StatusText");
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = new Vector2(padding, 0f);
+            rect.offsetMax = new Vector2(-padding, 0f);
+
+            Text text = rect.gameObject.AddComponent<Text>();
+            text.font = _font;
+            text.fontSize = statusFontSize;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = textColor;
+            text.raycastTarget = false;
+            text.supportRichText = true;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            Shadow shadow = rect.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.65f);
+            shadow.effectDistance = new Vector2(1f, -1f);
+            return text;
+        }
+
+        /// <summary>
+        /// Top-centre mission line. The level is replicated by
+        /// NetworkLevelManager, so pilot and gunner see the same objective
+        /// and the text changes when the crew advances.
+        /// </summary>
+        private void BuildMissionBanner()
+        {
+            var go = new GameObject("HudObjective", typeof(RectTransform));
+            _objectiveRoot = (RectTransform)go.transform;
+            _objectiveRoot.SetParent(transform, false);
+            _objectiveRoot.anchorMin = new Vector2(0.5f, 1f);
+            _objectiveRoot.anchorMax = new Vector2(0.5f, 1f);
+            _objectiveRoot.pivot = new Vector2(0.5f, 1f);
+            _objectiveRoot.anchoredPosition = objectiveOffset;
+            _objectiveRoot.sizeDelta = new Vector2(objectiveWidth, objectiveFontSize + 8f);
+
+            _objectiveText = go.AddComponent<Text>();
+            _objectiveText.font = _font;
+            _objectiveText.fontSize = objectiveFontSize;
+            _objectiveText.alignment = TextAnchor.MiddleCenter;
+            _objectiveText.color = objectiveColor;
+            _objectiveText.raycastTarget = false;
+            _objectiveText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            _objectiveText.verticalOverflow = VerticalWrapMode.Overflow;
+            Shadow shadow = go.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.7f);
+            shadow.effectDistance = new Vector2(1f, -1f);
+
+            _objectiveRoot.gameObject.SetActive(false);
+        }
+
+        /// <summary>
+        /// Boss integrity bar plus the superlaser warning. It only appears
+        /// while the Death Star is alive, so level 1 and 2 stay clean.
+        /// </summary>
+        private void BuildBossBar()
+        {
+            var go = new GameObject("HudBossBar", typeof(RectTransform));
+            _bossRoot = (RectTransform)go.transform;
+            _bossRoot.SetParent(transform, false);
+            _bossRoot.anchorMin = new Vector2(0.5f, 1f);
+            _bossRoot.anchorMax = new Vector2(0.5f, 1f);
+            _bossRoot.pivot = new Vector2(0.5f, 1f);
+            _bossRoot.anchoredPosition = objectiveOffset + new Vector2(0f, -(objectiveFontSize + 16f));
+            _bossRoot.sizeDelta = new Vector2(bossBarWidth, 52f);
+
+            _bossLabel = CreateHudText(_bossRoot, "BossLabel", 12, TextAnchor.UpperLeft);
+            _bossLabel.fontStyle = FontStyle.Bold;
+            _bossLabel.color = bossBarColor;
+            _bossLabel.rectTransform.anchorMin = new Vector2(0f, 1f);
+            _bossLabel.rectTransform.anchorMax = new Vector2(1f, 1f);
+            _bossLabel.rectTransform.pivot = new Vector2(0f, 1f);
+            _bossLabel.rectTransform.anchoredPosition = Vector2.zero;
+            _bossLabel.rectTransform.sizeDelta = new Vector2(0f, 16f);
+
+            RectTransform track = CreateHudRect(_bossRoot, "BossTrack");
+            track.anchorMin = new Vector2(0f, 1f);
+            track.anchorMax = new Vector2(1f, 1f);
+            track.pivot = new Vector2(0f, 1f);
+            track.anchoredPosition = new Vector2(0f, -18f);
+            track.sizeDelta = new Vector2(0f, bossBarHeight);
+            Image trackImage = track.gameObject.AddComponent<Image>();
+            trackImage.sprite = _square;
+            trackImage.color = trackColor;
+            trackImage.raycastTarget = false;
+
+            Image fill = CreateFill(track, "BossFill", true);
+            fill.color = bossBarColor;
+            _bossFill = fill;
+
+            RectTransform charge = CreateHudRect(_bossRoot, "BossCharge");
+            charge.anchorMin = new Vector2(0f, 1f);
+            charge.anchorMax = new Vector2(1f, 1f);
+            charge.pivot = new Vector2(0f, 1f);
+            charge.anchoredPosition = new Vector2(0f, -(18f + bossBarHeight + 3f));
+            charge.sizeDelta = new Vector2(0f, 4f);
+            Image chargeImage = charge.gameObject.AddComponent<Image>();
+            chargeImage.sprite = _square;
+            chargeImage.color = new Color(0f, 0f, 0f, 0.6f);
+            chargeImage.raycastTarget = false;
+
+            Image chargeFill = CreateFill(charge, "BossChargeFill", false);
+            chargeFill.color = warningColor;
+            _bossChargeFill = chargeFill;
+
+            _bossWarning = CreateHudText(_bossRoot, "BossWarning", 12, TextAnchor.UpperCenter);
+            _bossWarning.fontStyle = FontStyle.Bold;
+            _bossWarning.color = warningColor;
+            _bossWarning.rectTransform.anchorMin = new Vector2(0f, 1f);
+            _bossWarning.rectTransform.anchorMax = new Vector2(1f, 1f);
+            _bossWarning.rectTransform.pivot = new Vector2(0.5f, 1f);
+            _bossWarning.rectTransform.anchoredPosition = new Vector2(0f, -(18f + bossBarHeight + 10f));
+            _bossWarning.rectTransform.sizeDelta = new Vector2(0f, 16f);
+
+            _bossRoot.gameObject.SetActive(false);
+        }
+
+        private Text CreateHudText(RectTransform parent, string name, int size, TextAnchor alignment)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            Text text = go.AddComponent<Text>();
+            text.font = _font;
+            text.fontSize = size;
+            text.alignment = alignment;
+            text.color = textColor;
+            text.raycastTarget = false;
+            text.horizontalOverflow = HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            Shadow shadow = go.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.7f);
+            shadow.effectDistance = new Vector2(1f, -1f);
+            return text;
+        }
+
+        private static RectTransform CreateHudRect(RectTransform parent, string name)
+        {
+            var go = new GameObject(name, typeof(RectTransform));
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.SetParent(parent, false);
+            return rect;
+        }
+
+        private void UpdateMissionBanner()
+        {
+            if (_objectiveRoot == null) return;
+
+            NetworkPlayer local = ResolveLocalPlayer();
+            bool visible = local != null;
+            if (_objectiveRoot.gameObject.activeSelf != visible)
+                _objectiveRoot.gameObject.SetActive(visible);
+            if (!visible) return;
+
+            int level = NetworkLevelManager.CurrentLevel;
+            string line;
+            if (level <= 1)
+            {
+                line = "OBJECTIVE  //  RUN THE BELT \u2014 REACH THE CHECKPOINT GATE";
+            }
+            else if (level == 2)
+            {
+                int down = Mathf.Clamp(NetworkLevelManager.EnemiesDestroyed, 0, NetworkLevelManager.Level3KillThreshold);
+                int remaining = Mathf.Max(0, NetworkLevelManager.Level3KillThreshold - down);
+                line = "OBJECTIVE  //  CLEAR THE BLOCKADE \u2014 "
+                    + down + "/" + NetworkLevelManager.Level3KillThreshold + " HOSTILES DOWN  //  "
+                    + (remaining > 0 ? remaining + " TO GO" : "DEATH STAR INBOUND");
+            }
+            else
+            {
+                line = "OBJECTIVE  //  DEATH STAR \u2014 HIT THE GLOWING EXHAUST PORT";
+            }
+            _objectiveText.text = line;
+        }
+
+        private void UpdateBossBar()
+        {
+            if (_bossRoot == null) return;
+
+            DeathStar boss = DeathStar.Active;
+            bool visible = boss != null && !boss.IsDestroyed;
+            if (_bossRoot.gameObject.activeSelf != visible)
+                _bossRoot.gameObject.SetActive(visible);
+            if (!visible) return;
+
+            _bossFill.fillAmount = Mathf.Clamp01(boss.HealthNormalized);
+            _bossLabel.text = "DEATH STAR  //  SURFACE INTEGRITY  " + Mathf.RoundToInt(Mathf.Clamp01(boss.HealthNormalized) * 100f) + "%";
+
+            bool charging = boss.IsChargingSuperlaser;
+            if (_bossWarning.gameObject.activeSelf != charging)
+                _bossWarning.gameObject.SetActive(charging);
+
+            _bossChargeFill.fillAmount = charging ? Mathf.Clamp01(boss.SuperlaserChargeNormalized) : 0f;
+
+            if (charging)
+            {
+                // Pulse the warning so it reads as urgent at a glance.
+                float pulse = 0.55f + 0.45f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 7f));
+                Color c = warningColor;
+                c.a = pulse;
+                _bossWarning.color = c;
+            }
+        }
+
+        private void UpdateStatusReadout()
+        {            if (_statusRoot == null) return;
+
+            // Without a bound crew ship there is no speed to show and no
+            // origin for the gate distance, so the whole strip stays hidden.
+            bool visible = _target != null;
+            if (_statusRoot.gameObject.activeSelf != visible)
+                _statusRoot.gameObject.SetActive(visible);
+            if (!visible) return;
+
+            int speed = Mathf.Clamp(Mathf.RoundToInt(_target.ShipVelocity.magnitude), 0, 999);
+            string line = "SPEED " + speed.ToString("000", CultureInfo.InvariantCulture) + " m/s";
+
+            Level1Checkpoint gate = Level1Checkpoint.Instance;
+            if (NetworkLevelManager.CurrentLevel == 1 && gate != null && !gate.Reached)
+                line += "   \u00b7   " + FormatGateDistance(gate.DistanceTo(_target.transform.position));
+
+            // Air brake readout. It only shows while the brake is actually
+            // held, so the strip stays quiet during normal flight. The rich
+            // text tag keeps the speed and the gate distance in their normal
+            // colour and tints just the new words.
+            if (_target.IsAirBraking)
+                line += "   \u00b7   <color=#" + ColorUtility.ToHtmlStringRGBA(warningColor) + ">AIR BRAKE</color>";
+
+            _statusText.text = line;
+        }
+
+        private static string FormatGateDistance(float metres)
+        {
+            if (metres >= 1000f)
+                return "GATE " + (metres / 1000f).ToString("0.0", CultureInfo.InvariantCulture) + " km";
+            return "GATE " + Mathf.Max(0, Mathf.RoundToInt(metres)).ToString(CultureInfo.InvariantCulture) + " m";
+        }
+
+        private void UpdateRoleBlock(NetworkPlayer local)
+        {
+            if (_roleRoot == null) return;
+
+            bool visible = local != null;
+            if (_roleRoot.gameObject.activeSelf != visible)
+                _roleRoot.gameObject.SetActive(visible);
+            if (!visible) return;
+
+            string role;
+            string hints;
+            string status;
+            Color accent;
+
+            if (local.IsGunnerProxy)
+            {
+                role = "GUNNER";
+                hints = "Mouse aim \u00b7 RMB fire \u00b7 Space shield \u00b7 R reload";
+                status = "Crew ship: pilot flies, you shoot + shield";
+                accent = ammoColor;
+            }
+            else if (local.crewRole == CrewRole.Pilot)
+            {
+                role = "PILOT";
+                if (local.hasGunner)
+                {
+                    hints = "W/S thrust \u00b7 A/D yaw \u00b7 mouse steer \u00b7 Q/E roll\nLShift boost \u00b7 X brake \u00b7 LCtrl air brake \u00b7 Alt look \u00b7 G flight assist";
+                    status = "P2 gunner aboard: guns + shields are theirs";
+                }
+                else
+                {
+                    hints = "W/S thrust \u00b7 A/D yaw \u00b7 mouse steer \u00b7 Q/E roll\nLMB fire \u00b7 Space shield \u00b7 R reload \u00b7 LShift boost \u00b7 X brake \u00b7 LCtrl air brake \u00b7 Alt look \u00b7 G assist";
+                    status = "Solo flight: a 2nd player can join as gunner";
+                }
+                accent = shieldActiveColor;
+            }
+            else
+            {
+                role = "SOLO";
+                hints = "W/S thrust \u00b7 A/D yaw \u00b7 mouse steer \u00b7 Q/E roll\nLMB fire \u00b7 Space shield \u00b7 R reload \u00b7 LShift boost \u00b7 X brake \u00b7 LCtrl air brake \u00b7 Alt look \u00b7 G assist";
+                status = "Single-seat ship: you fly and shoot";
+                accent = reloadColor;
+            }
+
+            _roleLabel.text = role;
+            _roleLabel.color = accent;
+            _roleHints.text = hints;
+            _roleHints.color = textColor;
+            _roleStatus.text = status;
+            _roleStatus.color = new Color(textColor.r, textColor.g, textColor.b, 0.6f);
+        }
+
+        private void UpdateReticle(NetworkPlayer local)
+        {
+            if (_reticleRoot == null) return;
+
+            // _target is the shared crew ship for a gunner; hide the reticle
+            // once that ship is down.
+            bool show = local != null && local.IsGunnerProxy && _target != null && !_target.IsDead;
+            if (_reticleRoot.gameObject.activeSelf != show)
+                _reticleRoot.gameObject.SetActive(show);
         }
 
         private Image CreateBar(string name, string caption, Vector2 position, float contentWidth, out Text value)
@@ -292,6 +755,43 @@ namespace BattleSky.Network
             var rect = (RectTransform)go.transform;
             rect.SetParent(parent, false);
             return rect;
+        }
+
+        /// <summary>Text that hangs from the top edge of its parent, wrapping inside the parent width.</summary>
+        private Text CreateTopLeftText(RectTransform parent, string name, float y, int size)
+        {
+            RectTransform rect = CreateRect(parent, name);
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(0f, y);
+            rect.sizeDelta = new Vector2(0f, size + 6f);
+            Text text = rect.gameObject.AddComponent<Text>();
+            text.font = _font;
+            text.fontSize = size;
+            text.alignment = TextAnchor.UpperLeft;
+            text.color = textColor;
+            text.raycastTarget = false;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            Shadow shadow = rect.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.65f);
+            shadow.effectDistance = new Vector2(1f, -1f);
+            return text;
+        }
+
+        private void CreateReticleTick(string name, Vector2 position, Vector2 size)
+        {
+            RectTransform rect = CreateRect(_reticleRoot, name);
+            rect.anchorMin = new Vector2(0.5f, 0.5f);
+            rect.anchorMax = new Vector2(0.5f, 0.5f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = position;
+            rect.sizeDelta = size;
+            Image image = rect.gameObject.AddComponent<Image>();
+            image.sprite = _square;
+            image.color = reticleColor;
+            image.raycastTarget = false;
         }
 
         private Font LoadFont()

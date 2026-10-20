@@ -58,12 +58,14 @@ namespace BattleSky.Network
             if (NetworkClient.isConnected)
             {
                 ShowMenu(false);
-                statusText.text = $"Connected - {LocalCrewRoleText()} | {LocalCrewHelp()}";
+                if (statusText != null)
+                    statusText.text = $"Connected - {LocalCrewRoleText()} | {LocalCrewHelp()}";
             }
             else if (NetworkServer.active)
             {
                 ShowMenu(false);
-                statusText.text = $"Hosting - {LocalCrewRoleText()} | {LocalCrewHelp()}";
+                if (statusText != null)
+                    statusText.text = $"Hosting - {LocalCrewRoleText()} | {LocalCrewHelp()}";
             }
         }
 
@@ -73,17 +75,25 @@ namespace BattleSky.Network
             if (local == null) return "joining crew...";
             if (local.IsGunnerProxy)
                 return "P2 GUNNER: you shoot + shield, pilot flies";
-            if (local.hasGunner)
-                return "P1 PILOT: you fly, gunner shoots + shields";
-            return "SOLO: you fly + shoot (gunner joins next)";
+            if (local.crewRole == CrewRole.Pilot)
+                return local.hasGunner
+                    ? "P1 PILOT: you fly, gunner shoots + shields"
+                    : "P1 PILOT: solo flight, waiting for a gunner";
+            return "SOLO: you fly + shoot (2nd player joins as gunner)";
         }
 
+        // Keys match the ShipInputActions asset: Ship map has W/S thrust,
+        // A/D yaw, mouse steer, Q/E roll, LMB fire (solo only), leftShift
+        // boost, Space shield, R reload, G flight assist; the Gunner map has
+        // RMB fire, Space shield and R reload.
         private string LocalCrewHelp()
         {
             NetworkPlayer local = FindLocalPlayer();
             if (local != null && local.IsGunnerProxy)
-                return "Click fire, Space shield, R reload";
-            return "W/S thrust, mouse steer, Click fire, Space shield";
+                return "mouse aim, RMB fire, Space shield, R reload";
+            if (local != null && local.crewRole == CrewRole.Pilot && local.hasGunner)
+                return "W/S thrust, A/D yaw, mouse steer, Q/E roll, leftShift boost, G assist";
+            return "W/S thrust, A/D yaw, mouse steer, Q/E roll, LMB fire, Space shield, R reload, leftShift boost, G assist";
         }
 
         private NetworkPlayer FindLocalPlayer()

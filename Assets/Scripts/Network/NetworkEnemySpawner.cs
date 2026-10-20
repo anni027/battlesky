@@ -69,6 +69,9 @@ namespace BattleSky.Network
         /// <summary>Stage the running wave belongs to (-1 until the first one).</summary>
         private int _trackedStage = -1;
 
+        /// <summary>The aggression that was last written to the escorts.</summary>
+        private float _appliedAggression = -1f;
+
         /// <summary>True once the running wave has been reported as cleared.</summary>
         private bool _waveCredited;
 
@@ -273,6 +276,7 @@ namespace BattleSky.Network
             _waveFighters.Clear();
             _waveCredited = false;
             _waveSpawned = false;
+            _appliedAggression = -1f;
             WaveTotal = 0;
             WaveRemaining = 0;
         }
@@ -352,7 +356,7 @@ namespace BattleSky.Network
             // that are carried forward and the ones that are already in the
             // arena both get the aggression of the current stage, so the
             // whole escort fights with the same rules.
-            ApplyBossAggression(boss);
+            ApplyBossAggression(boss, true);
 
             Vector3 bossPosition = boss.position;
             Vector3 crewPosition = crew.position;
@@ -460,12 +464,19 @@ namespace BattleSky.Network
         /// updated here, and the survivors that were carried into the arena
         /// are covered as well.
         /// </summary>
-        private void ApplyBossAggression(Transform bossTransform)
+        private void ApplyBossAggression(Transform bossTransform, bool force = false)
         {
             DeathStar boss = bossTransform != null ? bossTransform.GetComponent<DeathStar>() : DeathStar.Active;
             if (boss == null) return;
 
             float aggression = boss.Aggression;
+
+            // A full scene scan is far too expensive to run every frame: with
+            // a few hundred asteroids and bolts on screen it tanks the frame
+            // rate. The aggression only changes when the boss changes stage,
+            // so the scan only runs when the value actually moved.
+            if (!force && Mathf.Approximately(aggression, _appliedAggression)) return;
+            _appliedAggression = aggression;
 
             foreach (var ship in Object.FindObjectsByType<BattleSky.Network.EnemyShip>(FindObjectsSortMode.None))
                 if (ship != null) ship.SetAggression(aggression);

@@ -211,6 +211,11 @@ public class NetworkPlayer : NetworkBehaviour
     private float _gunnerYaw;
     private float _gunnerPitch;
 
+    // Cached crew ship lookup. The gunner proxy needs the crew ship every
+    // frame, and a full scene scan per frame is far too expensive.
+    private NetworkPlayer _cachedCrewShip;
+    private float _crewShipLookupTimer;
+
     // Gunner input command throttling: CmdSendGunnerInput only goes out when
     // state changes or at most every 0.05 s (20 Hz) so a gunner does not spam
     // 60-144 commands per second.
@@ -820,13 +825,28 @@ public class NetworkPlayer : NetworkBehaviour
     /// </summary>
     public NetworkPlayer FindCrewShip()
     {
+        // The crew ship only changes when the pilot leaves, so the lookup is
+        // cached. Scanning the whole scene every frame is far too expensive:
+        // the gunner proxy does this in Update and the server copy of the
+        // proxy does it in FixedUpdate.
+        if (_cachedCrewShip != null && _cachedCrewShip.crewId == crewId && !_cachedCrewShip.IsGunnerProxy)
+            return _cachedCrewShip;
+
+        _crewShipLookupTimer -= Time.deltaTime;
+        if (_crewShipLookupTimer > 0f) return _cachedCrewShip;
+        _crewShipLookupTimer = 0.5f;
+
         NetworkPlayer[] ships = FindObjectsByType<NetworkPlayer>(FindObjectsSortMode.None);
         foreach (NetworkPlayer s in ships)
         {
             if (s == this) continue;
             if (s.crewId == crewId && !s.IsGunnerProxy)
+            {
+                _cachedCrewShip = s;
                 return s;
+            }
         }
+        _cachedCrewShip = null;
         return null;
     }
 

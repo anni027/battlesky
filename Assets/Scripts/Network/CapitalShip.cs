@@ -45,6 +45,8 @@ namespace BattleSky.Network
         [SerializeField] private float _maxFireRange = 450f;
         [Tooltip("Half angle of the cone the shots are spread over, in degrees. Keeps the guns from being laser accurate.")]
         [SerializeField] private float _spreadDegrees = 3f;
+        [Tooltip("0 = patrols as usual, 1 = maximum aggression: a relentless chase that can outrun the crew's cruise speed")]
+        [SerializeField] private float _aggression = 0f;
 
         [Header("Targeting")]
         [Tooltip("Seconds between two target searches. The ship re-picks at once when its target is gone.")]
@@ -146,6 +148,15 @@ namespace BattleSky.Network
 
         /// <summary>True while the shield still has charge to soak damage.</summary>
         public bool IsShieldActive => _shield > 0f;
+
+        /// <summary>0 = normal patrol, 1 = maximum aggression.</summary>
+        public float Aggression => _aggression;
+
+        /// <summary>Sets how hard this ship hunts the crew.</summary>
+        public void SetAggression(float value)
+        {
+            _aggression = Mathf.Clamp01(value);
+        }
 
         private void Awake()
         {
@@ -365,6 +376,30 @@ namespace BattleSky.Network
         // Flight / combat
         // ------------------------------------------------------------------
 
+        /// <summary>Top speed of the hull, scaled by the aggression.</summary>
+        private float CurrentMaxSpeed => Mathf.Lerp(_maxSpeed, _maxSpeed * 1.35f, _aggression);
+
+        /// <summary>Forward acceleration, scaled by the aggression.</summary>
+        private float CurrentThrust => Mathf.Lerp(_thrust, _thrust * 1.8f, _aggression);
+
+        /// <summary>How fast the bow swings onto the target, scaled by the aggression.</summary>
+        private float CurrentTurnRate => Mathf.Lerp(_turnRate, _turnRate * 1.4f, _aggression);
+
+        /// <summary>Seconds between two salvos, scaled by the aggression.</summary>
+        private float CurrentFireRate => Mathf.Lerp(_fireRate, _fireRate * 1.4f, _aggression);
+
+        /// <summary>Half angle of the shot cone, scaled by the aggression.</summary>
+        private float CurrentSpread => Mathf.Lerp(_spreadDegrees, 0.4f, _aggression);
+
+        /// <summary>Seconds between two target searches, scaled by the aggression.</summary>
+        private float CurrentRetargetInterval => Mathf.Lerp(_retargetInterval, 0.35f, _aggression);
+
+        /// <summary>Closest range the guns fire at, scaled by the aggression.</summary>
+        private float CurrentMinFireRange => Mathf.Lerp(_minFireRange, 15f, _aggression);
+
+        /// <summary>Furthest range the guns fire at, scaled by the aggression.</summary>
+        private float CurrentMaxFireRange => Mathf.Lerp(_maxFireRange, 600f, _aggression);
+
         /// <summary>
         /// Picks the player ship to shoot at: the nearest real crew ship.
         /// A gunner proxy is an invisible control forwarder, so it is only
@@ -406,7 +441,7 @@ namespace BattleSky.Network
             if (_target == null || _retargetTimer <= 0f)
             {
                 PickTarget();
-                _retargetTimer = _retargetInterval;
+                _retargetTimer = CurrentRetargetInterval;
             }
 
             if (_target != null)
@@ -421,12 +456,12 @@ namespace BattleSky.Network
                 Vector3 toAim = PredictTargetPoint(transform.position, _muzzleVelocity) - transform.position;
                 toAim = toAim.sqrMagnitude > 0.0001f ? toAim.normalized : toTarget;
 
-                _rb.MoveRotation(Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toAim), _turnRate * Time.fixedDeltaTime));
+                _rb.MoveRotation(Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toAim), CurrentTurnRate * Time.fixedDeltaTime));
 
                 // Always thrust along the nose: a ship that only thrusts
                 // when it is already lined up stalls the moment it
                 // overshoots.
-                _rb.AddForce(transform.forward * _thrust, ForceMode.Acceleration);
+                _rb.AddForce(transform.forward * CurrentThrust, ForceMode.Acceleration);
 
                 // Scrub the sideways drift while the nose is off the
                 // target, so the ship turns in a tight arc instead of
@@ -438,13 +473,13 @@ namespace BattleSky.Network
                     _rb.linearVelocity -= lateral * Mathf.Clamp01(4f * Time.fixedDeltaTime);
                 }
 
-                if (_rb.linearVelocity.sqrMagnitude > _maxSpeed * _maxSpeed)
-                    _rb.linearVelocity = _rb.linearVelocity.normalized * _maxSpeed;
+                if (_rb.linearVelocity.sqrMagnitude > CurrentMaxSpeed * CurrentMaxSpeed)
+                    _rb.linearVelocity = _rb.linearVelocity.normalized * CurrentMaxSpeed;
 
                 _fireTimer -= Time.fixedDeltaTime;
                 if (_fireTimer <= 0f && _bulletPrefab != null)
                 {
-                    _fireTimer = 1f / _fireRate;
+                    _fireTimer = 1f / CurrentFireRate;
                     Fire();
                 }
             }
@@ -480,11 +515,11 @@ namespace BattleSky.Network
             Vector3 direction = aimPoint - origin;
             direction = direction.sqrMagnitude > 0.0001f ? direction.normalized : transform.forward;
 
-            if (_spreadDegrees <= 0f) return direction;
+            if (CurrentSpread <= 0f) return direction;
 
             return Quaternion.Euler(
-                Random.Range(-_spreadDegrees, _spreadDegrees),
-                Random.Range(-_spreadDegrees, _spreadDegrees),
+                Random.Range(-CurrentSpread, CurrentSpread),
+                Random.Range(-CurrentSpread, CurrentSpread),
                 0f) * direction;
         }
 
@@ -519,7 +554,7 @@ namespace BattleSky.Network
             // range and roughly in front of the nose.
             Vector3 toTarget = _target.position - transform.position;
             float distance = toTarget.magnitude;
-            if (distance < _minFireRange || distance > _maxFireRange) return;
+            if (distance < CurrentMinFireRange || distance > CurrentMaxFireRange) return;
             if (distance > 0.0001f) toTarget /= distance;
             if (Vector3.Dot(transform.forward, toTarget) <= 0.7f) return;
 
@@ -725,7 +760,7 @@ namespace BattleSky.Network
 
             Vector3 velocity = EstimateVelocity();
             float forwardSpeed = Vector3.Dot(velocity, transform.forward);
-            float intensity = Mathf.Clamp01(forwardSpeed / Mathf.Max(1f, _maxSpeed));
+            float intensity = Mathf.Clamp01(forwardSpeed / Mathf.Max(1f, CurrentMaxSpeed));
 
             Color emission = Color.Lerp(GlowEmissionLow, GlowEmissionHigh, intensity);
             float scale = Mathf.Lerp(0.75f, 1.15f, intensity);

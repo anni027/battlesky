@@ -15,6 +15,10 @@ namespace BattleSky.Network
     /// once the last fighter of it is gone.
     /// Enemies still alive when level 3 starts carry forward and are moved
     /// into the boss arena so they keep fighting instead of trailing behind.
+    /// The escorts fight as hard as the stage the station is in: the boss owns
+    /// the aggression value and this spawner hands it to the fighters and to
+    /// the capital ships, so the whole escort speeds up when the fight
+    /// escalates.
     /// Enemy count and spawn rate scale with NetworkLevelManager.DifficultyMultiplier.
     /// </summary>
     public class NetworkEnemySpawner : NetworkBehaviour
@@ -110,6 +114,11 @@ namespace BattleSky.Network
                 DeathStar boss = DeathStar.Active;
                 int quota = boss != null ? boss.WaveQuota : 0;
                 UpdateBossWave(boss, quota, max, rate);
+                // The station escalates in stages, so the escorts have to
+                // get more aggressive with it: hand the current stage
+                // aggression to everything that is already in the arena, so a
+                // running fight picks up the new aggression right away.
+                if (boss != null) ApplyBossAggression(boss.transform);
 
                 DespawnFarEnemies();
                 return;
@@ -235,7 +244,7 @@ namespace BattleSky.Network
             // carried into the arena sit on top of the wave quota, and a cap
             // of "survivors + quota" lets the wave actually reach full size.
             int survivors = Mathf.Max(0, CountLiveEnemies() - WaveRemaining);
-            GameObject fighter = SpawnWaveFighter(survivors + quota);
+            GameObject fighter = SpawnWaveFighter(survivors + quota, boss);
             if (fighter == null) return;
 
             _waveFighters.Add(fighter);
@@ -339,6 +348,12 @@ namespace BattleSky.Network
         {
             if (boss == null || crew == null) return;
 
+            // The station decides how hard the escorts hit. The survivors
+            // that are carried forward and the ones that are already in the
+            // arena both get the aggression of the current stage, so the
+            // whole escort fights with the same rules.
+            ApplyBossAggression(boss);
+
             Vector3 bossPosition = boss.position;
             Vector3 crewPosition = crew.position;
             Vector3 axis = bossPosition - crewPosition;
@@ -436,6 +451,30 @@ namespace BattleSky.Network
         }
 
         /// <summary>
+        /// Hands the aggression of the current boss stage to every hostile in
+        /// the scene.
+        ///
+        /// The escorts have to get more aggressive as the fight escalates, so
+        /// the station owns the value and the spawner passes it on. Capital
+        /// ships launch fighters of their own, so both kinds of hostile are
+        /// updated here, and the survivors that were carried into the arena
+        /// are covered as well.
+        /// </summary>
+        private void ApplyBossAggression(Transform bossTransform)
+        {
+            DeathStar boss = bossTransform != null ? bossTransform.GetComponent<DeathStar>() : DeathStar.Active;
+            if (boss == null) return;
+
+            float aggression = boss.Aggression;
+
+            foreach (var ship in Object.FindObjectsByType<BattleSky.Network.EnemyShip>(FindObjectsSortMode.None))
+                if (ship != null) ship.SetAggression(aggression);
+
+            foreach (var capital in Object.FindObjectsByType<BattleSky.Network.CapitalShip>(FindObjectsSortMode.None))
+                if (capital != null) capital.SetAggression(aggression);
+        }
+
+        /// <summary>
         /// Spawns one fighter of a boss wave IN FRONT of the crew.
         ///
         /// The crew cruises at 60-140 m/s and a fighter only manages 48 m/s,
@@ -443,8 +482,11 @@ namespace BattleSky.Network
         /// reaped by the despawn ring before it can even turn around. The
         /// wave is therefore placed along the crew's approach, spread out
         /// across it, so the whole wave comes at the crew as a wall of ships.
+        ///
+        /// The fighter takes the aggression of the stage the station is in,
+        /// so a wave fights as hard as the stage it belongs to.
         /// </summary>
-        private GameObject SpawnWaveFighter(int cap)
+        private GameObject SpawnWaveFighter(int cap, DeathStar boss)
         {
             if (enemyPrefab == null) return null;
             if (CountLiveEnemies() >= cap) return null;
@@ -468,6 +510,9 @@ namespace BattleSky.Network
 
             GameObject enemy = Instantiate(enemyPrefab, position, Quaternion.LookRotation(forward, Vector3.up));
             NetworkServer.Spawn(enemy);
+            // The wave fights as hard as the stage the station is in.
+            var ship = enemy.GetComponent<BattleSky.Network.EnemyShip>();
+            if (ship != null && boss != null) ship.SetAggression(boss.Aggression);
             _activeEnemies.Add(enemy);
             return enemy;
         }

@@ -45,6 +45,14 @@ namespace BattleSky.Network
         /// <summary>The hull never takes more than this share of the incoming damage.</summary>
         private const float MaxSurfaceDamageMultiplier = 0.25f;
 
+        /// <summary>
+        /// How long the station stays in the scene after it dies. The electric
+        /// death effect plays for about a second and a half, and the clients
+        /// drop their copy of the station as soon as the server despawns it,
+        /// so the station has to stay until the burst is over.
+        /// </summary>
+        private const float DeathDestroyDelay = 2f;
+
         [Header("Death Star")]
         [SerializeField] private float _radius = 50f;
         [Tooltip("Hull integrity. The armour eats most of the damage, so the crew has to keep the fire up")]
@@ -91,6 +99,7 @@ namespace BattleSky.Network
 
         private static DeathStar _active;
         private static Shader _glowShader;
+        private static Shader _electricShader;
         private float _superlaserTimer;
         private bool _superlaserCharging;
         private bool _superlaserQueued;
@@ -157,6 +166,25 @@ namespace BattleSky.Network
         /// wave is tougher and fires faster than the first one.
         /// </summary>
         public bool WantsHeavyFighters => _stage == DeathStarStage.HeavyFighters;
+
+        /// <summary>
+        /// How hard the escorts should hunt the crew. Zero while the force field
+        /// holds, full aggression from the second stage on, and the very top in the
+        /// last stage where the swarm never stops.
+        /// </summary>
+        public float Aggression
+        {
+            get
+            {
+                switch (_stage)
+                {
+                    case DeathStarStage.ForceField: return 0f;
+                    case DeathStarStage.Fighters: return 0.8f;
+                    case DeathStarStage.HeavyFighters: return 1f;
+                    default: return 0f;
+                }
+            }
+        }
 
         /// <summary>
         /// The hull pool the station actually fights with. The floor keeps the
@@ -515,7 +543,7 @@ namespace BattleSky.Network
             NetworkLevelManager.RegisterBossDefeated();
 
             if (isServer)
-                StartCoroutine(DestroyAfterDelay(0.3f));
+                StartCoroutine(DestroyAfterDelay(DeathDestroyDelay));
         }
 
         private System.Collections.IEnumerator DestroyAfterDelay(float seconds)
@@ -573,6 +601,12 @@ namespace BattleSky.Network
         [ClientRpc]
         private void RpcExplode()
         {
+            // The station is dead on every peer, so the HUD can drop it right
+            // away and the hull stops being a target.
+            _isDestroyed = true;
+
+            // The hull still breaks apart: the debris prefab keeps working
+            // exactly as before. The electric burst plays around it.
             if (_explosionPrefab != null)
             {
                 for (int i = 0; i < _explosionCount; i++)
@@ -583,21 +617,435 @@ namespace BattleSky.Network
                     StartCoroutine(DestroyVisualAfter(1.2f, pop));
                 }
             }
-            else
-            {
-                // Keep the flash count sane: every flash is a dynamic light
-                // and a material, and URP has a hard budget for both.
-                int flashes = Mathf.Min(_explosionCount, 12);
-                for (int i = 0; i < flashes; i++)
-                {
-                    Vector3 offset = Random.insideUnitSphere * (_explosionRadius * 1.6f);
-                    CreateFlash(transform.position + offset,
-                        Random.Range(Mathf.Max(4f, _radius * 0.02f), Mathf.Max(8f, _radius * 0.06f)),
-                        Random.Range(0.5f, 1.4f));
-                }
-            }
-            CreateFlash(transform.position, _radius * 1.2f, 1.6f);
+
+            // The station does not go up in orange fire: it burns out in a
+            // blue-white electric burst.
+            SpawnElectricDeath();
         }
+
+        // ------------------------------------------------------------------
+        // The electric death
+        // ------------------------------------------------------------------
+
+        /// <summary>The HDR blue-white the electric burst burns with.</summary>
+        private static readonly Color ElectricBlue = new Color(0.25f, 1.3f, 4.5f, 1f);
+
+        /// <summary>How many expanding shells the burst plays.</summary>
+        private const int ElectricShellCount = 5;
+
+        /// <summary>How many lightning arcs the burst plays.</summary>
+        private const int ElectricArcCount = 14;
+
+        /// <summary>How many shockwave rings the burst plays.</summary>
+        private const int ElectricRingCount = 3;
+
+        /// <summary>
+        /// The death of the station: a blue-white electric burst instead of
+        /// the old orange fire. A near-white core flash, five expanding
+        /// energy shells, a fan of lightning arcs and three shockwave rings,
+        /// all scaled to the 2 km station, plus the light of the burst.
+        ///
+        /// Runs on every client through the client rpc, so all the peers
+        /// see the same death.
+        /// </summary>
+        private void SpawnElectricDeath()
+        {
+            Material electric = CreateElectricMaterial();
+            if (electric == null) return;
+
+            Vector3 centre = transform.position;
+
+            SpawnEnergyShells(electric, centre);
+            SpawnLightningArcs(electric, centre);
+            SpawnShockwaveRings(electric, centre);
+            SpawnCoreFlash(electric, centre);
+            SpawnElectricLights(centre);
+        }
+
+        /// <summary>
+        /// The expanding energy shells: translucent spheres that grow from a
+        /// seed at the centre of the station out past the hull and fade away
+        /// on the way. Every shell gets a material of its own, so the shells
+        /// fade independently.
+        /// </summary>
+        private void SpawnEnergyShells(Material electric, Vector3 centre)
+        {
+            // The shells get bigger one after the other, so the burst reads
+            // as a wave and not as five identical bubbles.
+            float[] sizeFactors = { 1f, 1.12f, 0.94f, 1.26f, 1.08f };
+
+            for (int i = 0; i < ElectricShellCount; i++)
+            {
+                GameObject shell = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                shell.name = "DeathStarElectricShell";
+                Collider shellCollider = shell.GetComponent<Collider>();
+                if (shellCollider != null) Destroy(shellCollider);
+
+                shell.transform.position = centre;
+                shell.transform.localScale = Vector3.one * SphereScale(0.15f * _radius);
+
+                Material shellMaterial = CloneElectricMaterial(electric, "DeathStarElectricShell");
+                if (shellMaterial == null)
+                {
+                    Destroy(shell);
+                    continue;
+                }
+                shell.GetComponent<MeshRenderer>().sharedMaterial = shellMaterial;
+
+                StartCoroutine(ShellRoutine(shell, shellMaterial,
+                    sizeFactors[i % sizeFactors.Length], i * 0.06f));
+            }
+        }
+
+        /// <summary>
+        /// Grows one shell out to its final size and fades it away. The
+        /// additive blend ignores the alpha, so the colour itself has to
+        /// dim down to black for the shell to disappear.
+        /// </summary>
+        private System.Collections.IEnumerator ShellRoutine(GameObject shell, Material material, float sizeFactor, float delay)
+        {
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+
+            const float duration = 1.1f;
+            float elapsed = 0f;
+            while (elapsed < duration && shell != null)
+            {
+                elapsed += Time.deltaTime;
+                float k = Mathf.Clamp01(elapsed / duration);
+                // The shell eases out: it slows down as it runs out of energy.
+                float grow = 1f - Mathf.Pow(1f - k, 2.2f);
+                float radius = Mathf.Lerp(0.15f, 2.2f * sizeFactor, grow) * _radius;
+                shell.transform.localScale = Vector3.one * SphereScale(radius);
+
+                float fade = 1f - k;
+                ApplyColor(material, new Color(
+                    ElectricBlue.r * fade, ElectricBlue.g * fade, ElectricBlue.b * fade, fade));
+                yield return null;
+            }
+
+            if (shell != null) Destroy(shell);
+            if (material != null) Destroy(material);
+        }
+
+        /// <summary>
+        /// The lightning: a fan of jagged bolts that leave the centre of the
+        /// station in every direction. Every arc gets a material of its own,
+        /// so it can flicker and burn down on its own.
+        /// </summary>
+        private void SpawnLightningArcs(Material electric, Vector3 centre)
+        {
+            for (int i = 0; i < ElectricArcCount; i++)
+                SpawnLightningArc(electric, centre);
+        }
+
+        private void SpawnLightningArc(Material electric, Vector3 centre)
+        {
+            GameObject arc = new GameObject("DeathStarElectricArc");
+            arc.transform.position = centre;
+
+            LineRenderer line = arc.AddComponent<LineRenderer>();
+            line.useWorldSpace = false;
+            line.positionCount = 7;
+            line.startWidth = 18f;
+            line.endWidth = 2f;
+            line.numCapVertices = 2;
+            line.numCornerVertices = 2;
+            line.alignment = LineAlignment.View;
+            line.textureMode = LineTextureMode.Stretch;
+            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            line.receiveShadows = false;
+
+            Material arcMaterial = CloneElectricMaterial(electric, "DeathStarElectricArc");
+            if (arcMaterial == null)
+            {
+                Destroy(arc);
+                return;
+            }
+            line.sharedMaterial = arcMaterial;
+
+            // The bolt leaves the centre of the station in a random direction
+            // and is about as long as the hull is wide.
+            Vector3 direction = Random.onUnitSphere;
+            float length = Random.Range(0.8f, 1.35f) * _radius;
+
+            for (int i = 0; i < line.positionCount; i++)
+            {
+                float t = i / (float)(line.positionCount - 1);
+                Vector3 point = direction * (length * t);
+
+                // The bolt zigzags: every point is pushed sideways by a
+                // random amount that gets smaller towards the tip, so it
+                // reads as a bolt and not as a straight line.
+                float jitter = _radius * 0.12f * (1f - t) * Random.Range(0.5f, 1f);
+                Vector3 sideways = Random.insideUnitSphere;
+                sideways -= direction * Vector3.Dot(sideways, direction);
+                if (sideways.sqrMagnitude > 0.0001f)
+                    point += sideways.normalized * jitter;
+
+                line.SetPosition(i, point);
+            }
+
+            StartCoroutine(ArcRoutine(arc, arcMaterial, 0.35f));
+        }
+
+        /// <summary>
+        /// The bolt flickers while it burns down and is gone after a third of
+        /// a second.
+        /// </summary>
+        private System.Collections.IEnumerator ArcRoutine(GameObject arc, Material material, float lifetime)
+        {
+            float elapsed = 0f;
+            while (elapsed < lifetime && arc != null)
+            {
+                elapsed += Time.deltaTime;
+                float k = Mathf.Clamp01(elapsed / Mathf.Max(0.01f, lifetime));
+                // The bolt flickers while it fades out.
+                float flicker = Random.Range(0.55f, 1.25f) * (1f - k);
+                ApplyColor(material, new Color(
+                    ElectricBlue.r * flicker, ElectricBlue.g * flicker, ElectricBlue.b * flicker, 1f - k));
+                yield return null;
+            }
+
+            if (arc != null) Destroy(arc);
+            if (material != null) Destroy(material);
+        }
+
+        /// <summary>
+        /// The shockwave rings: flat discs that race outwards from the
+        /// station, each one in a different direction, and fade out fast.
+        /// </summary>
+        private void SpawnShockwaveRings(Material electric, Vector3 centre)
+        {
+            float[] sizeFactors = { 1f, 1.12f, 0.92f };
+
+            for (int i = 0; i < ElectricRingCount; i++)
+            {
+                GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                ring.name = "DeathStarShockwave";
+                Collider ringCollider = ring.GetComponent<Collider>();
+                if (ringCollider != null) Destroy(ringCollider);
+
+                // The disc faces outwards: the cylinder is a disc around its
+                // local Y axis, so the ring is turned until that axis points
+                // along the direction of the wave.
+                Vector3 direction = Random.onUnitSphere;
+                Vector3 up = Mathf.Abs(Vector3.Dot(direction, Vector3.up)) > 0.99f
+                    ? Vector3.forward
+                    : Vector3.up;
+                ring.transform.rotation = Quaternion.LookRotation(direction, up) * Quaternion.Euler(90f, 0f, 0f);
+                ring.transform.position = centre;
+                ring.transform.localScale = new Vector3(0.3f * _radius * 2f, 1f, 0.3f * _radius * 2f);
+
+                Material ringMaterial = CloneElectricMaterial(electric, "DeathStarShockwave");
+                if (ringMaterial == null)
+                {
+                    Destroy(ring);
+                    continue;
+                }
+                ring.GetComponent<MeshRenderer>().sharedMaterial = ringMaterial;
+
+                StartCoroutine(RingRoutine(ring, ringMaterial,
+                    sizeFactors[i % sizeFactors.Length], i * 0.1f));
+            }
+        }
+
+        /// <summary>
+        /// Expands one ring out to three station radii and fades it out.
+        /// </summary>
+        private System.Collections.IEnumerator RingRoutine(GameObject ring, Material material, float sizeFactor, float delay)
+        {
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+
+            const float duration = 0.9f;
+            float elapsed = 0f;
+            while (elapsed < duration && ring != null)
+            {
+                elapsed += Time.deltaTime;
+                float k = Mathf.Clamp01(elapsed / duration);
+                float radius = Mathf.Lerp(0.15f, 3f * sizeFactor, k) * _radius;
+                // The cylinder is 1 unit across, so the radius is doubled to
+                // get the wanted size in metres. The disc stays flat.
+                ring.transform.localScale = new Vector3(radius * 2f, 1f, radius * 2f);
+
+                // The ring fades out fast: it is only readable for a moment.
+                float fade = Mathf.Clamp01(1f - k * 1.7f);
+                ApplyColor(material, new Color(
+                    ElectricBlue.r * fade, ElectricBlue.g * fade, ElectricBlue.b * fade, fade));
+                yield return null;
+            }
+
+            if (ring != null) Destroy(ring);
+            if (material != null) Destroy(material);
+        }
+
+        /// <summary>
+        /// The core flash: the near-white heart of the burst at the centre of
+        /// the station. It pops out to a bit more than the hull radius and
+        /// burns down.
+        /// </summary>
+        private void SpawnCoreFlash(Material electric, Vector3 centre)
+        {
+            GameObject core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            core.name = "DeathStarElectricCore";
+            Collider coreCollider = core.GetComponent<Collider>();
+            if (coreCollider != null) Destroy(coreCollider);
+
+            core.transform.position = centre;
+            core.transform.localScale = Vector3.one * SphereScale(0.9f * _radius);
+
+            // The core is the white heart of the burst, so it burns in a
+            // near-white of its own.
+            Material coreMaterial = CloneElectricMaterial(electric, "DeathStarElectricCore");
+            if (coreMaterial == null)
+            {
+                Destroy(core);
+                return;
+            }
+            ApplyColor(coreMaterial, new Color(6f, 7f, 9f, 1f));
+            core.GetComponent<MeshRenderer>().sharedMaterial = coreMaterial;
+
+            StartCoroutine(CoreRoutine(core, coreMaterial));
+        }
+
+        /// <summary>
+        /// The core pops out and fades away in a fraction of a second.
+        /// </summary>
+        private System.Collections.IEnumerator CoreRoutine(GameObject core, Material material)
+        {
+            const float duration = 0.4f;
+            float elapsed = 0f;
+            while (elapsed < duration && core != null)
+            {
+                elapsed += Time.deltaTime;
+                float k = Mathf.Clamp01(elapsed / duration);
+                // The core pops out fast and then burns down.
+                float size = k < 0.25f
+                    ? Mathf.Lerp(0.9f, 1.3f, k / 0.25f)
+                    : Mathf.Lerp(1.3f, 1.15f, (k - 0.25f) / 0.75f);
+                core.transform.localScale = Vector3.one * SphereScale(size * _radius);
+
+                float fade = 1f - k;
+                ApplyColor(material, new Color(6f * fade, 7f * fade, 9f * fade, fade));
+                yield return null;
+            }
+
+            if (core != null) Destroy(core);
+            if (material != null) Destroy(material);
+        }
+
+        /// <summary>
+        /// The light of the burst: three electric point lights that burn out
+        /// over a second and a half.
+        /// </summary>
+        private void SpawnElectricLights(Vector3 centre)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                GameObject lightGo = new GameObject("DeathStarElectricLight");
+                lightGo.transform.position = centre;
+
+                Light light = lightGo.AddComponent<Light>();
+                light.type = LightType.Point;
+                light.color = new Color(0.6f, 0.8f, 1f);
+                light.range = 4f * _radius;
+                light.intensity = 40f;
+                light.shadows = LightShadows.None;
+
+                StartCoroutine(ElectricLightRoutine(lightGo, light, i * 0.08f));
+            }
+        }
+
+        /// <summary>
+        /// The light fades out and takes its GameObject with it.
+        /// </summary>
+        private System.Collections.IEnumerator ElectricLightRoutine(GameObject lightGo, Light light, float delay)
+        {
+            if (delay > 0f) yield return new WaitForSeconds(delay);
+
+            const float duration = 1.5f;
+            float elapsed = 0f;
+            while (elapsed < duration && lightGo != null)
+            {
+                elapsed += Time.deltaTime;
+                float k = Mathf.Clamp01(elapsed / duration);
+                if (light != null) light.intensity = Mathf.Lerp(40f, 0f, k * k);
+                yield return null;
+            }
+
+            if (lightGo != null) Destroy(lightGo);
+        }
+
+        /// <summary>
+        /// The material the whole electric burst renders with: an additive
+        /// HDR blue-white. The values above one are what make it bloom, and
+        /// the additive blend keeps the shells, the bolts and the rings from
+        /// hiding each other.
+        /// </summary>
+        private Material CreateElectricMaterial()
+        {
+            Shader shader = ElectricShader();
+            if (shader == null) return null;
+
+            Material material = new Material(shader)
+            {
+                name = "DeathStarElectric",
+                hideFlags = HideFlags.DontSave
+            };
+
+            ApplyColor(material, ElectricBlue);
+
+            // Additive: the parts of the burst have to add up instead of
+            // covering each other.
+            if (material.HasProperty("_Surface")) material.SetFloat("_Surface", 1f); // transparent
+            if (material.HasProperty("_Blend")) material.SetFloat("_Blend", 1f); // additive
+            if (material.HasProperty("_SrcBlend"))
+                material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            if (material.HasProperty("_DstBlend"))
+                material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);
+            if (material.HasProperty("_ZWrite")) material.SetFloat("_ZWrite", 0f);
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.renderQueue = 3100;
+
+            // The material belongs to the station, so it goes away with it.
+            _runtimeMaterials.Add(material);
+            return material;
+        }
+
+        /// <summary>
+        /// A private copy of the electric material. The shells, the bolts and
+        /// the rings fade on their own, so every one of them needs a material
+        /// of its own. The copy belongs to the effect, so it is destroyed
+        /// with the effect and not with the station.
+        /// </summary>
+        private static Material CloneElectricMaterial(Material source, string materialName)
+        {
+            if (source == null) return null;
+            return new Material(source)
+            {
+                name = materialName,
+                hideFlags = HideFlags.DontSave
+            };
+        }
+
+        /// <summary>
+        /// The shader of the electric burst. The URP unlit shader is the
+        /// first choice, the built-in unlit shaders are the fallback so the
+        /// burst is never invisible.
+        /// </summary>
+        private static Shader ElectricShader()
+        {
+            if (_electricShader != null) return _electricShader;
+            _electricShader = Shader.Find("Universal Render Pipeline/Unlit");
+            if (_electricShader == null) _electricShader = Shader.Find("Unlit/Color");
+            if (_electricShader == null) _electricShader = Shader.Find("Sprites/Default");
+            return _electricShader;
+        }
+
+        /// <summary>
+        /// The scale a built-in sphere needs for the wanted radius in metres:
+        /// the sphere mesh is 0.5 units across.
+        /// </summary>
+        private static float SphereScale(float radius) => radius * 2f;
 
         /// <summary>
         /// Builds the white force field shell around the station. Runs on the

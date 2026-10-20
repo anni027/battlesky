@@ -27,6 +27,10 @@ public class FloatingAsteroid : MonoBehaviour
     [Tooltip("15f")]
     private float _collisionDamage = 15f;
 
+    [SerializeField]
+    [Tooltip("10f - the damage a rock does to an enemy ship. Lower than the player damage because the enemies have no shields")]
+    private float _enemyCollisionDamage = 10f;
+
     private Rigidbody _rb;
 
     private void Awake()
@@ -65,6 +69,35 @@ public class FloatingAsteroid : MonoBehaviour
         if (netPlayer != null)
         {
             netPlayer.TakeDamage(_collisionDamage);
+            return;
         }
+
+        // Enemy ships are not immune to the belt either: a rock that clips a
+        // fighter hurts it. The enemy hulls live on child objects, so the
+        // lookup has to walk up to the root that carries the health.
+        BattleSky.Network.EnemyShip enemy = col.gameObject.GetComponentInParent<BattleSky.Network.EnemyShip>();
+        if (enemy != null)
+        {
+            enemy.TakeDamage(_enemyCollisionDamage);
+            DamageThisRock(_enemyCollisionDamage);
+            return;
+        }
+
+        BattleSky.Network.CapitalShip capital = col.gameObject.GetComponentInParent<BattleSky.Network.CapitalShip>();
+        if (capital != null)
+        {
+            capital.TakeDamage(_enemyCollisionDamage);
+            DamageThisRock(_enemyCollisionDamage);
+        }
+    }
+
+    /// <summary>
+    /// The rock takes a share of the impact, so an asteroid that clips a
+    /// fighter is chewed up instead of bouncing off untouched.
+    /// </summary>
+    private void DamageThisRock(float amount)
+    {
+        BattleSky.Network.NetworkAsteroid asteroid = GetComponent<BattleSky.Network.NetworkAsteroid>();
+        if (asteroid != null) asteroid.TakeDamage(amount);
     }
 }

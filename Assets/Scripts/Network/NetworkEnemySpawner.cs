@@ -8,7 +8,11 @@ namespace BattleSky.Network
     /// <summary>
     /// Spawns enemies based on the current level:
     /// Level 2 = capital ships + fighter drones (defeat six to advance),
-    /// Level 3 = boss sphere (very large sphere).
+    /// Level 3 = boss sphere (very large sphere), fought in stages.
+    /// The Death Star owns the stage machine: its wave quota says how
+    /// many escort fighters the crew has to clear in the current stage.
+    /// This spawner keeps that wave topped up and reports it as cleared
+    /// once the last fighter of it is gone.
     /// Enemies still alive when level 3 starts carry forward and are moved
     /// into the boss arena so they keep fighting instead of trailing behind.
     /// Enemy count and spawn rate scale with NetworkLevelManager.DifficultyMultiplier.
@@ -28,22 +32,54 @@ namespace BattleSky.Network
         [SerializeField] private float _bossSpawnDelay = 5f;
         [Tooltip("Distance the 2 km station is parked in front of the crew (its front surface ends up about 1.6 km ahead)")]
         [SerializeField] private float _bossDistance = 2600f;
-        [Tooltip("Escort fighters that join the boss fight (the boss itself is endless otherwise)")]
-        [SerializeField] private int _maxLevel3Escorts = 4;
         [Tooltip("Where survivors of the blockade are placed on the crew -> boss line, in metres ahead of the crew")]
         [SerializeField] private Vector2 _carryForwardDistances = new Vector2(140f, 300f);
+        [Tooltip("Seconds between two fighters of a boss wave. A wave has to arrive as a wall of ships, not one every few seconds.")]
+        [SerializeField] private float _waveSpawnInterval = 0.6f;
+
+        /// <summary>
+        /// Number of fighters the current boss stage asks the crew to
+        /// clear. Zero while no wave is running.
+        /// </summary>
+        public static int WaveTotal { get; private set; }
+
+        /// <summary>
+        /// Number of fighters of the running wave that are still alive.
+        /// </summary>
+        public static int WaveRemaining { get; private set; }
 
         private List<GameObject> _activeEnemies = new List<GameObject>();
+
+        /// <summary>
+        /// Fighters of the running wave that this spawner sent out. The
+        /// survivors carried over from level 2 are deliberately not in
+        /// here: they do not count toward the wave.
+        /// </summary>
+        private List<GameObject> _waveFighters = new List<GameObject>();
+
         private float _spawnTimer;
         private float _bossTimer;
         private bool _bossSpawned;
         private bool _arrivalAnnounced;
-        private int _level3EscortsSpawned;
+
+        /// <summary>Stage the running wave belongs to (-1 until the first one).</summary>
+        private int _trackedStage = -1;
+
+        /// <summary>True once the running wave has been reported as cleared.</summary>
+        private bool _waveCredited;
+
+        /// <summary>True once the running wave has spawned a fighter of its own.</summary>
+        private bool _waveSpawned;
 
         private void Update()
         {
             if (!isServer) return;
-            if (NetworkLevelManager.CurrentLevel < 2) return;
+
+            if (NetworkLevelManager.CurrentLevel < 2)
+            {
+                ResetWaveTracking();
+                return;
+            }
 
             float difficulty = NetworkLevelManager.DifficultyMultiplier;
             float rate = spawnRate / difficulty;
@@ -67,20 +103,13 @@ namespace BattleSky.Network
                     return;
                 }
 
-                // A couple of escorts keep the boss fight tense, but the fight
-                // must stay a fight with the Death Star, not a swarm. The
-                // enemies carried over from level 2 already count toward this
-                // budget, so the arena never gets more than the cap.
-                if (_level3EscortsSpawned < _maxLevel3Escorts)
-                {
-                    _spawnTimer += Time.deltaTime;
-                    if (_spawnTimer >= 1f / rate)
-                    {
-                        _spawnTimer = 0f;
-                        if (TrySpawn(max, false))
-                            _level3EscortsSpawned++;
-                    }
-                }
+                // The boss decides what the crew has to fight: its quota
+                // says how many fighters the current stage needs. The
+                // quota is zero while the force field holds and once the
+                // station is vulnerable, so no fighters are sent then.
+                DeathStar boss = DeathStar.Active;
+                int quota = boss != null ? boss.WaveQuota : 0;
+                UpdateBossWave(boss, quota, max, rate);
 
                 DespawnFarEnemies();
                 return;
@@ -88,15 +117,14 @@ namespace BattleSky.Network
 
             if (NetworkLevelManager.CurrentLevel == 2)
             {
+                // No boss wave runs before the station shows up.
+                ResetWaveTracking();
+
                 // Six kills start the boss fight whether or not the field is
                 // clear: whatever is still alive carries forward into level 3.
                 if (NetworkLevelManager.EnemiesDestroyed >= NetworkLevelManager.Level3KillThreshold)
                 {
-                    // Survivors already fill part of the level 3 escort
-                    // budget, so the arena does not end up with them plus a
-                    // full escort wave.
                     int survivors = CountAllEnemies();
-                    _level3EscortsSpawned = Mathf.Min(survivors, _maxLevel3Escorts);
                     Debug.Log($"[NetworkEnemySpawner] level 3 triggered by kills with {survivors} hostiles still alive");
                     NetworkLevelManager.Advance(3);
                     return;
@@ -124,16 +152,21 @@ namespace BattleSky.Network
             DespawnFarEnemies();
         }
 
-        private bool TrySpawn(int maxEnemies, bool allowCapitals)
+        /// <summary>
+        /// Spawns a single enemy next to the crew and returns it, or null
+        /// when nothing was spawned (the field is full, there is no
+        /// prefab, or no crew ship to spawn around).
+        /// </summary>
+        private GameObject TrySpawn(int maxEnemies, bool allowCapitals)
         {
-            if (CountLiveEnemies() >= maxEnemies) return false;
+            if (CountLiveEnemies() >= maxEnemies) return null;
 
             GameObject prefab = allowCapitals && capitalShipPrefab != null
                 && Random.value < 0.3f ? capitalShipPrefab : enemyPrefab;
-            if (prefab == null) return false;
+            if (prefab == null) return null;
 
             var players = FindCrewShips(FindObjectsInactive.Include);
-            if (players.Length == 0) return false;
+            if (players.Length == 0) return null;
 
             var target = players[Random.Range(0, players.Length)];
             Vector3 spawnPosition = target.transform.position + Random.onUnitSphere * spawnRadius;
@@ -142,7 +175,97 @@ namespace BattleSky.Network
             GameObject enemy = Instantiate(prefab, spawnPosition, Random.rotation);
             NetworkServer.Spawn(enemy);
             _activeEnemies.Add(enemy);
-            return true;
+            return enemy;
+        }
+
+        /// <summary>
+        /// Runs the stage driven escort waves of the boss fight.
+        ///
+        /// The boss owns the stage machine: its quota says how many
+        /// fighters the crew has to kill in the current stage. This
+        /// spawner only refills the wave and hands the clear over to the
+        /// boss once the last fighter of the wave is gone.
+        /// </summary>
+        private void UpdateBossWave(DeathStar boss, int quota, int max, float rate)
+        {
+            if (boss == null)
+            {
+                // No station in the world: there is no wave to run.
+                ResetWaveTracking();
+                return;
+            }
+
+            if ((int)boss.Stage != _trackedStage)
+            {
+                // A new stage starts a new wave: the fighters of the
+                // previous one stop counting and the clear credit is
+                // handed out again with the new wave.
+                _trackedStage = (int)boss.Stage;
+                _waveFighters.Clear();
+                _waveCredited = false;
+                _waveSpawned = false;
+                WaveTotal = quota;
+                WaveRemaining = 0;
+            }
+
+            PruneWaveFighters();
+            WaveRemaining = _waveFighters.Count;
+
+            // The wave is wiped. The boss moves its stage machine on, but
+            // only once per wave: a wave that never got a fighter of its
+            // own cannot be wiped either.
+            if (quota > 0 && _waveSpawned && !_waveCredited && WaveRemaining == 0)
+            {
+                _waveCredited = true;
+                Debug.Log("[NetworkEnemySpawner] boss wave cleared");
+                boss.NotifyWaveCleared();
+            }
+
+            // A cleared wave stays empty until the next stage asks for a
+            // new one, and no fighter is sent while no wave runs.
+            if (quota <= 0 || _waveCredited) return;
+            if (WaveRemaining >= quota) return;
+
+            _spawnTimer += Time.deltaTime;
+            if (_spawnTimer < _waveSpawnInterval) return;
+
+            _spawnTimer = 0f;
+            // The boss decides how many fighters its stage needs, so the wave
+            // is not limited by the normal enemy cap: the survivors that were
+            // carried into the arena sit on top of the wave quota, and a cap
+            // of "survivors + quota" lets the wave actually reach full size.
+            int survivors = Mathf.Max(0, CountLiveEnemies() - WaveRemaining);
+            GameObject fighter = SpawnWaveFighter(survivors + quota);
+            if (fighter == null) return;
+
+            _waveFighters.Add(fighter);
+            _waveSpawned = true;
+            Debug.Log($"[NetworkEnemySpawner] wave fighter {WaveRemaining}/{quota} spawned (stage {boss.Stage})");
+        }
+
+        /// <summary>
+        /// Drops the destroyed fighters of the running wave, so the
+        /// remaining count only holds live hostiles.
+        /// </summary>
+        private void PruneWaveFighters()
+        {
+            for (int i = _waveFighters.Count - 1; i >= 0; i--)
+                if (_waveFighters[i] == null)
+                    _waveFighters.RemoveAt(i);
+        }
+
+        /// <summary>
+        /// Clears the wave bookkeeping. Used whenever no wave is running,
+        /// so the HUD never shows a stale counter.
+        /// </summary>
+        private void ResetWaveTracking()
+        {
+            _trackedStage = -1;
+            _waveFighters.Clear();
+            _waveCredited = false;
+            _waveSpawned = false;
+            WaveTotal = 0;
+            WaveRemaining = 0;
         }
 
         private bool SpawnBoss()
@@ -310,6 +433,43 @@ namespace BattleSky.Network
 
             for (int i = 0; i < fighters.Length; i++) Place(fighters[i].gameObject);
             for (int i = 0; i < capitals.Length; i++) Place(capitals[i].gameObject);
+        }
+
+        /// <summary>
+        /// Spawns one fighter of a boss wave IN FRONT of the crew.
+        ///
+        /// The crew cruises at 60-140 m/s and a fighter only manages 48 m/s,
+        /// so a fighter that appears behind the ship is left behind and
+        /// reaped by the despawn ring before it can even turn around. The
+        /// wave is therefore placed along the crew's approach, spread out
+        /// across it, so the whole wave comes at the crew as a wall of ships.
+        /// </summary>
+        private GameObject SpawnWaveFighter(int cap)
+        {
+            if (enemyPrefab == null) return null;
+            if (CountLiveEnemies() >= cap) return null;
+
+            var players = FindCrewShips(FindObjectsInactive.Include);
+            if (players.Length == 0) return null;
+
+            var target = players[Random.Range(0, players.Length)];
+            Vector3 forward = target.transform.forward;
+            if (forward.sqrMagnitude < 0.01f) forward = Vector3.forward;
+            forward = forward.normalized;
+
+            float ahead = Random.Range(140f, 280f);
+            Vector3 lateral = Random.insideUnitSphere;
+            lateral -= forward * Vector3.Dot(lateral, forward);
+            if (lateral.sqrMagnitude > 0.0001f)
+                lateral = lateral.normalized * Random.Range(0f, 110f);
+
+            Vector3 position = target.transform.position + forward * ahead + lateral;
+            position.y = Mathf.Max(position.y, 5f);
+
+            GameObject enemy = Instantiate(enemyPrefab, position, Quaternion.LookRotation(forward, Vector3.up));
+            NetworkServer.Spawn(enemy);
+            _activeEnemies.Add(enemy);
+            return enemy;
         }
 
         /// <summary>

@@ -136,7 +136,7 @@ public static class GenerateLevelPrefabs
         // checkout does not log a missing-asset error or render magenta.
         var dishMaterial = LoadMaterial(DeathStarDishMaterialPath);
         if (dishMaterial == null) dishMaterial = hullMaterial;
-        CreateDetail(go, "SuperlaserDish", "sphere", dishMaterial,
+        GameObject dishDetail = CreateDetail(go, "SuperlaserDish", "sphere", dishMaterial,
             new Vector3(0.34f, 0.34f, 0.14f), dishDir * 0.46f, Quaternion.LookRotation(dishDir));
 
         // Cosmetic turret bumps spread around the equator (no colliders).
@@ -150,17 +150,8 @@ public static class GenerateLevelPrefabs
                 Quaternion.identity);
         }
 
-        // Exhaust port anchor at trench end (on the unit sphere surface so the
-        // prefab's x100 scale puts it 50 m out). Never move or re-parent this:
-        // both the exhaust port and the superlaser spawn from it.
-        var exhaustAnchor = new GameObject("ExhaustPortAnchor");
-        exhaustAnchor.transform.SetParent(go.transform, false);
-        exhaustAnchor.transform.localPosition = new Vector3(0f, 0f, 0.5f);
-        // Face outward so the superlaser beam and exhaust port point away
-        // from the station (+Z is the front surface).
-        exhaustAnchor.transform.localRotation = Quaternion.identity;
-        SetPrivateRef(deathStar, "_exhaustPortAnchor", exhaustAnchor.transform);
-        SetPrivateRef(deathStar, "_superlaserDish", exhaustAnchor.transform);
+        // The superlaser beam spawns from the dish detail created above.
+        SetPrivateRef(deathStar, "_superlaserDish", dishDetail.transform);
 
         PrefabUtility.SaveAsPrefabAsset(go, DeathStarPath);
         Object.DestroyImmediate(go);

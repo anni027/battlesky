@@ -325,11 +325,25 @@ public static class BattleSkyDoctor
         if (boss.GetProperty("IsChargingSuperlaser") == null)
             Fail("DeathStar has no IsChargingSuperlaser property, so the superlaser warning cannot be shown");
         if (boss.GetMethod("HandleProjectileHit", new[] { typeof(Vector3), typeof(float) }) == null)
-            Fail("DeathStar has no HandleProjectileHit(Vector3,float), so the exhaust port weak point cannot work");
+            Fail("DeathStar has no HandleProjectileHit(Vector3,float), so the station cannot take damage");
+        if (boss.GetField("_forceFieldMaterial", BindingFlags.Instance | BindingFlags.NonPublic) == null)
+            Fail("DeathStar has no _forceFieldMaterial field, so the force field cannot be tinted");
 
         var bossPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(DeathStarPath);
-        if (bossPrefab != null && bossPrefab.transform.Find("ExhaustPortAnchor") == null)
-            Fail("DeathStar.prefab has no ExhaustPortAnchor, so the weak point has nowhere to live");
+        if (bossPrefab != null)
+        {
+            var bossComponent = bossPrefab.GetComponent<DeathStar>();
+            if (bossComponent != null)
+            {
+                var bossSerialized = new SerializedObject(bossComponent);
+                SerializedProperty fieldHealth = bossSerialized.FindProperty("_forceFieldMaxHealth");
+                if (fieldHealth == null || Mathf.Abs(fieldHealth.floatValue - 900f) > 100f)
+                    Fail("DeathStar.prefab force field health is not ~900, so the shield is not tuned for the boss fight");
+                SerializedProperty fieldRadius = bossSerialized.FindProperty("_forceFieldRadius");
+                if (fieldRadius == null || fieldRadius.floatValue <= 1f)
+                    Fail("DeathStar.prefab force field radius is not >1, so the shield does not cover the hull");
+            }
+        }
 
         // --- air brake input ------------------------------------------------
         var actions = AssetDatabase.LoadAssetAtPath<UnityEngine.InputSystem.InputActionAsset>(

@@ -146,9 +146,34 @@ namespace BattleSky.Network
             Vector3 towardStation = _station != null
                 ? (_station.transform.position - _shipPos).normalized
                 : _shipFwd;
-            _close = _wide + _shipUp * 50f + _shipRight * 60f + towardStation * 240f;
+            // The close shot only drifts a little towards the station: the
+            // star is 2 km across, so a longer push would fill the screen
+            // with the hull instead of showing the station.
+            _close = _wide + _shipUp * 50f + _shipRight * 60f + towardStation * 150f;
+
+            // Never plan a shot from inside the station.
+            _wide = KeepOutsideStation(_wide);
+            _close = KeepOutsideStation(_close);
 
             StartCoroutine(RunCutscene());
+        }
+
+        /// <summary>
+        /// Pushes a camera position back out of the station. The station is
+        /// 2 km across and its force field shell is even bigger, so a shot
+        /// that starts too close would end up filming the inside of the hull.
+        /// </summary>
+        private Vector3 KeepOutsideStation(Vector3 position)
+        {
+            if (_station == null) return position;
+
+            Vector3 center = _station.transform.position;
+            float minDistance = _station.Radius * 1.5f;
+            Vector3 offset = position - center;
+            float distance = offset.magnitude;
+            if (distance >= minDistance) return position;
+            if (distance < 0.01f) return center - _station.transform.forward * minDistance;
+            return center + offset / distance * minDistance;
         }
 
         private void Update()
@@ -211,6 +236,10 @@ namespace BattleSky.Network
                 lookRotation = Quaternion.Slerp(LookAt(_lookTarget, position), chaseRotation, t);
             }
 
+            // The camera must never end up inside the station or inside its
+            // force field shell, whatever the crew was doing when the shot
+            // started.
+            position = KeepOutsideStation(position);
             _camera.transform.SetPositionAndRotation(position, lookRotation);
 
             // FOV peaks in the middle of the shot: saved -> 48 -> saved.

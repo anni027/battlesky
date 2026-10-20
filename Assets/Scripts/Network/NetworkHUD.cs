@@ -83,6 +83,11 @@ namespace BattleSky.Network
         public Color warningColor = new Color(1f, 0.72f, 0.2f, 1f);
 
         private const float ReloadStripGap = 4f;
+        // The boss label carries two lines (the stage title plus the
+        // sub-label that says what to do), so the bar and the superlaser
+        // charge strip both sit below the pair of them.
+        private const float BossLabelHeight = 30f;
+        private const float BossTrackTop = 32f;
 
         private RectTransform _root;
         private Image _hullFill;
@@ -426,8 +431,10 @@ namespace BattleSky.Network
             _bossRoot.anchorMax = new Vector2(0.5f, 1f);
             _bossRoot.pivot = new Vector2(0.5f, 1f);
             _bossRoot.anchoredPosition = objectiveOffset + new Vector2(0f, -(objectiveFontSize + 16f));
-            _bossRoot.sizeDelta = new Vector2(bossBarWidth, 52f);
+            _bossRoot.sizeDelta = new Vector2(bossBarWidth, BossTrackTop + bossBarHeight + 30f);
 
+            // The label holds the stage title and, on the second line, the
+            // instruction or the fighter count for that stage.
             _bossLabel = CreateHudText(_bossRoot, "BossLabel", 12, TextAnchor.UpperLeft);
             _bossLabel.fontStyle = FontStyle.Bold;
             _bossLabel.color = bossBarColor;
@@ -435,13 +442,13 @@ namespace BattleSky.Network
             _bossLabel.rectTransform.anchorMax = new Vector2(1f, 1f);
             _bossLabel.rectTransform.pivot = new Vector2(0f, 1f);
             _bossLabel.rectTransform.anchoredPosition = Vector2.zero;
-            _bossLabel.rectTransform.sizeDelta = new Vector2(0f, 16f);
+            _bossLabel.rectTransform.sizeDelta = new Vector2(0f, BossLabelHeight);
 
             RectTransform track = CreateHudRect(_bossRoot, "BossTrack");
             track.anchorMin = new Vector2(0f, 1f);
             track.anchorMax = new Vector2(1f, 1f);
             track.pivot = new Vector2(0f, 1f);
-            track.anchoredPosition = new Vector2(0f, -18f);
+            track.anchoredPosition = new Vector2(0f, -BossTrackTop);
             track.sizeDelta = new Vector2(0f, bossBarHeight);
             Image trackImage = track.gameObject.AddComponent<Image>();
             trackImage.sprite = _square;
@@ -456,7 +463,7 @@ namespace BattleSky.Network
             charge.anchorMin = new Vector2(0f, 1f);
             charge.anchorMax = new Vector2(1f, 1f);
             charge.pivot = new Vector2(0f, 1f);
-            charge.anchoredPosition = new Vector2(0f, -(18f + bossBarHeight + 3f));
+            charge.anchoredPosition = new Vector2(0f, -(BossTrackTop + bossBarHeight + 3f));
             charge.sizeDelta = new Vector2(0f, 4f);
             Image chargeImage = charge.gameObject.AddComponent<Image>();
             chargeImage.sprite = _square;
@@ -473,7 +480,7 @@ namespace BattleSky.Network
             _bossWarning.rectTransform.anchorMin = new Vector2(0f, 1f);
             _bossWarning.rectTransform.anchorMax = new Vector2(1f, 1f);
             _bossWarning.rectTransform.pivot = new Vector2(0.5f, 1f);
-            _bossWarning.rectTransform.anchoredPosition = new Vector2(0f, -(18f + bossBarHeight + 10f));
+            _bossWarning.rectTransform.anchoredPosition = new Vector2(0f, -(BossTrackTop + bossBarHeight + 10f));
             _bossWarning.rectTransform.sizeDelta = new Vector2(0f, 16f);
 
             _bossRoot.gameObject.SetActive(false);
@@ -532,11 +539,41 @@ namespace BattleSky.Network
             }
             else
             {
-                line = "OBJECTIVE  //  DEATH STAR \u2014 HIT THE GLOWING EXHAUST PORT";
+                line = DeathStarObjective();
             }
             _objectiveText.text = line;
         }
 
+        /// <summary>
+        /// Objective line for the Death Star fight. The station fights in
+        /// stages, so the line names the stage the crew is in right now:
+        /// the force field, then the fighter wave, then the heavy wave and
+        /// the hull.
+        /// </summary>
+        private static string DeathStarObjective()
+        {
+            DeathStar boss = DeathStar.Active;
+            if (boss == null) return "OBJECTIVE  //  DEATH STAR";
+            switch (boss.Stage)
+            {
+                case DeathStarStage.ForceField:
+                    return "OBJECTIVE  //  DEATH STAR \u2014 BREAK THE WHITE FORCE FIELD";
+                case DeathStarStage.Fighters:
+                    return "OBJECTIVE  //  DEATH STAR \u2014 DESTROY THE FIGHTER WAVE";
+                case DeathStarStage.HeavyFighters:
+                    return "OBJECTIVE  //  DEATH STAR \u2014 DESTROY THE HEAVY WAVE, THEN BREAK THE HULL";
+                default:
+                    return "OBJECTIVE  //  DEATH STAR";
+            }
+        }
+
+        /// <summary>
+        /// Boss bar for the Death Star. The station fights in stages, so the
+        /// bar always shows the number the crew has to beat right now: the
+        /// force field while it is up, the surface integrity once it is
+        /// gone. The fighter stages add a live count of the wave that is
+        /// still in the air.
+        /// </summary>
         private void UpdateBossBar()
         {
             if (_bossRoot == null) return;
@@ -547,8 +584,52 @@ namespace BattleSky.Network
                 _bossRoot.gameObject.SetActive(visible);
             if (!visible) return;
 
-            _bossFill.fillAmount = Mathf.Clamp01(boss.HealthNormalized);
-            _bossLabel.text = "DEATH STAR  //  SURFACE INTEGRITY  " + Mathf.RoundToInt(Mathf.Clamp01(boss.HealthNormalized) * 100f) + "%";
+            string title;
+            string sub;
+            float fill;
+            Color fillColor = bossBarColor;
+
+            switch (boss.Stage)
+            {
+                case DeathStarStage.ForceField:
+                {
+                    // Stage 1: the force field is the only thing that can be
+                    // hit, so the bar belongs to the field, not to the hull.
+                    float field = Mathf.Clamp01(boss.ForceFieldNormalized);
+                    fill = field;
+                    title = "DEATH STAR  //  FORCE FIELD  " + Mathf.RoundToInt(field * 100f) + "%";
+                    sub = boss.IsForceFieldActive ? "BREAK THE FORCE FIELD" : "FORCE FIELD DOWN";
+                    fillColor = shieldActiveColor;
+                    break;
+                }
+                case DeathStarStage.Fighters:
+                {
+                    fill = Mathf.Clamp01(boss.HealthNormalized);
+                    title = "DEATH STAR  //  STAGE 2/3";
+                    sub = FighterCounter();
+                    break;
+                }
+                case DeathStarStage.HeavyFighters:
+                {
+                    // The last stage: the swarm never stops and the hull is
+                    // the only thing left to break.
+                    fill = Mathf.Clamp01(boss.HealthNormalized);
+                    title = "DEATH STAR  //  STAGE 3/3";
+                    sub = FighterCounter();
+                    break;
+                }
+                default:
+                {
+                    fill = Mathf.Clamp01(boss.HealthNormalized);
+                    title = "DEATH STAR  //  HULL BREACH";
+                    sub = "SURFACE INTEGRITY  " + Mathf.RoundToInt(fill * 100f) + "%";
+                    break;
+                }
+            }
+
+            _bossFill.fillAmount = fill;
+            _bossFill.color = fillColor;
+            _bossLabel.text = title + "\n" + SubLabelText(sub);
 
             bool charging = boss.IsChargingSuperlaser;
             if (_bossWarning.gameObject.activeSelf != charging)
@@ -564,6 +645,22 @@ namespace BattleSky.Network
                 c.a = pulse;
                 _bossWarning.color = c;
             }
+        }
+
+        /// <summary>How many fighters of the current wave are still in the air.</summary>
+        private static string FighterCounter()
+        {
+            int total = NetworkEnemySpawner.WaveTotal;
+            if (total <= 0) return "CLEAR THE FIGHTERS";
+            int remaining = Mathf.Clamp(NetworkEnemySpawner.WaveRemaining, 0, total);
+            return "FIGHTERS " + remaining + "/" + total;
+        }
+
+        /// <summary>Sub-label in a dimmer shade, so the title keeps the eye.</summary>
+        private string SubLabelText(string text)
+        {
+            Color c = new Color(textColor.r, textColor.g, textColor.b, 0.72f);
+            return "<color=#" + ColorUtility.ToHtmlStringRGBA(c) + ">" + text + "</color>";
         }
 
         private void UpdateStatusReadout()

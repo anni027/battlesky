@@ -9,6 +9,11 @@ namespace BattleSky.Network
     /// fighter drones and fires heavy bolts at the nearest player.
     /// All capital ships must be destroyed to advance past Level 2.
     ///
+    /// The AI keeps a target (the nearest real crew ship, a gunner proxy
+    /// is only used as a fallback), always thrusts forward so it can never
+    /// stall, points its bow at the predicted intercept and only fires when
+    /// the target is in range and in front of the nose.
+    ///
     /// Visuals: the prefab only carries a placeholder cube, so the real hull
     /// is built from primitives at runtime (see <see cref="BuildVisualRig"/>).
     /// The rig is built identically on the server and on every client and it
@@ -22,9 +27,9 @@ namespace BattleSky.Network
     public class CapitalShip : NetworkBehaviour
     {
         [Header("Flight")]
-        [SerializeField] private float _thrust = 6f;
-        [SerializeField] private float _turnRate = 3f;
-        [SerializeField] private float _maxSpeed = 16f;
+        [SerializeField] private float _thrust = 12f;
+        [SerializeField] private float _turnRate = 4f;
+        [SerializeField] private float _maxSpeed = 34f;
 
         [Header("Combat")]
         [SerializeField] private int _maxHealth = 900;
@@ -34,6 +39,16 @@ namespace BattleSky.Network
         [SerializeField] private GameObject _bulletPrefab;
         [Tooltip("Metres in front of the fire point where a bolt is spawned, so it never starts inside the hull.")]
         [SerializeField] private float _muzzleClearance = 8f;
+        [Tooltip("Closest range the guns fire at. Below it the ship closes the distance first.")]
+        [SerializeField] private float _minFireRange = 25f;
+        [Tooltip("Furthest range the guns fire at. Beyond it the ship has to close in.")]
+        [SerializeField] private float _maxFireRange = 450f;
+        [Tooltip("Half angle of the cone the shots are spread over, in degrees. Keeps the guns from being laser accurate.")]
+        [SerializeField] private float _spreadDegrees = 3f;
+
+        [Header("Targeting")]
+        [Tooltip("Seconds between two target searches. The ship re-picks at once when its target is gone.")]
+        [SerializeField] private float _retargetInterval = 1f;
 
         [Header("Shields")]
         [Tooltip("Maximum shield charge. The shield soaks damage before the hull does.")]
@@ -88,6 +103,7 @@ namespace BattleSky.Network
         private Rigidbody _rb;
         private Transform _target;
         private float _fireTimer;
+        private float _retargetTimer;
         private float _fighterTimer;
         private int _fightersAlive;
         private int _fighterLaunchIndex;
@@ -133,10 +149,27 @@ namespace BattleSky.Network
 
         private void Awake()
         {
+            ApplyTunedNumbers();
             _mpb = new MaterialPropertyBlock();
             _shield = Mathf.Max(0f, _shieldHealth);
             _replicatedHealth = Mathf.Max(0, _health);
             BuildVisualRig();
+        }
+
+        /// <summary>
+        /// Applies the tuned flight numbers.
+        ///
+        /// The shipped prefab still carries the values from before the
+        /// retune, and a serialized prefab value always wins over the
+        /// default that is written in the script. Only the exact old
+        /// numbers are upgraded, so a value that was tuned by hand in the
+        /// Inspector is left alone.
+        /// </summary>
+        private void ApplyTunedNumbers()
+        {
+            if (_thrust == 6f) _thrust = 12f;      // 6 -> 12
+            if (_turnRate == 3f) _turnRate = 4f;   // 3 -> 4
+            if (_maxSpeed == 16f) _maxSpeed = 34f; // 16 -> 34
         }
 
         public override void OnStartServer()
@@ -332,16 +365,33 @@ namespace BattleSky.Network
         // Flight / combat
         // ------------------------------------------------------------------
 
+        /// <summary>
+        /// Picks the player ship to shoot at: the nearest real crew ship.
+        /// A gunner proxy is an invisible control forwarder, so it is only
+        /// used when no crew ship is around - without any target the ship
+        /// would sit still, and a proxy is better than nothing.
+        /// </summary>
         private void PickTarget()
         {
             NetworkPlayer best = null;
             float bestDist = float.MaxValue;
+            NetworkPlayer fallback = null;
+            float fallbackDist = float.MaxValue;
+
             foreach (var np in Object.FindObjectsByType<NetworkPlayer>(FindObjectsInactive.Include, FindObjectsSortMode.None))
             {
+                if (np == null) continue;
+
                 float d = Vector3.Distance(transform.position, np.transform.position);
+                if (np.IsGunnerProxy)
+                {
+                    if (d < fallbackDist) { fallbackDist = d; fallback = np; }
+                    continue;
+                }
                 if (d < bestDist) { bestDist = d; best = np; }
             }
-            _target = best?.transform;
+
+            _target = (best != null ? best : fallback)?.transform;
         }
 
         private void FixedUpdate()
@@ -351,26 +401,52 @@ namespace BattleSky.Network
 
             RechargeShield();
 
-            if (_target == null)
+            // Re-pick the target on a timer and the moment it is gone.
+            _retargetTimer -= Time.fixedDeltaTime;
+            if (_target == null || _retargetTimer <= 0f)
             {
                 PickTarget();
-                if (_target == null) return;
+                _retargetTimer = _retargetInterval;
             }
 
-            Vector3 toTarget = (_target.position - transform.position).normalized;
-            _rb.MoveRotation(Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toTarget), _turnRate * Time.fixedDeltaTime));
+            if (_target != null)
+            {
+                Vector3 toTarget = _target.position - transform.position;
+                float distance = toTarget.magnitude;
+                toTarget = distance > 0.0001f ? toTarget / distance : transform.forward;
 
-            if (Vector3.Dot(transform.forward, toTarget) > 0.3f)
+                // The nose points at the predicted intercept, so the ship
+                // leads its own shots instead of chasing the tail of the
+                // target.
+                Vector3 toAim = PredictTargetPoint(transform.position, _muzzleVelocity) - transform.position;
+                toAim = toAim.sqrMagnitude > 0.0001f ? toAim.normalized : toTarget;
+
+                _rb.MoveRotation(Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(toAim), _turnRate * Time.fixedDeltaTime));
+
+                // Always thrust along the nose: a ship that only thrusts
+                // when it is already lined up stalls the moment it
+                // overshoots.
                 _rb.AddForce(transform.forward * _thrust, ForceMode.Acceleration);
 
-            if (_rb.linearVelocity.sqrMagnitude > _maxSpeed * _maxSpeed)
-                _rb.linearVelocity = _rb.linearVelocity.normalized * _maxSpeed;
+                // Scrub the sideways drift while the nose is off the
+                // target, so the ship turns in a tight arc instead of
+                // skidding away.
+                float alignment = Vector3.Dot(transform.forward, toTarget);
+                if (alignment < 0.9f)
+                {
+                    Vector3 lateral = _rb.linearVelocity - transform.forward * Vector3.Dot(_rb.linearVelocity, transform.forward);
+                    _rb.linearVelocity -= lateral * Mathf.Clamp01(4f * Time.fixedDeltaTime);
+                }
 
-            _fireTimer -= Time.fixedDeltaTime;
-            if (_fireTimer <= 0f && _bulletPrefab != null)
-            {
-                _fireTimer = 1f / _fireRate;
-                Fire();
+                if (_rb.linearVelocity.sqrMagnitude > _maxSpeed * _maxSpeed)
+                    _rb.linearVelocity = _rb.linearVelocity.normalized * _maxSpeed;
+
+                _fireTimer -= Time.fixedDeltaTime;
+                if (_fireTimer <= 0f && _bulletPrefab != null)
+                {
+                    _fireTimer = 1f / _fireRate;
+                    Fire();
+                }
             }
 
             _fighterTimer -= Time.fixedDeltaTime;
@@ -379,6 +455,37 @@ namespace BattleSky.Network
                 _fighterTimer = _fighterSpawnInterval;
                 SpawnFighter();
             }
+        }
+
+        /// <summary>
+        /// Where the target will be when the bolt arrives, so the guns can
+        /// lead the shot instead of firing into the empty space behind it.
+        /// </summary>
+        private Vector3 PredictTargetPoint(Vector3 origin, float projectileSpeed)
+        {
+            if (_target == null) return origin + transform.forward;
+            Rigidbody targetBody = _target.GetComponent<Rigidbody>();
+            Vector3 targetVelocity = targetBody != null ? targetBody.linearVelocity : Vector3.zero;
+            float distance = Vector3.Distance(origin, _target.position);
+            float travel = distance / Mathf.Max(1f, projectileSpeed);
+            return _target.position + targetVelocity * travel;
+        }
+
+        /// <summary>
+        /// Direction of a shot from a gun to the aim point, with a small
+        /// random cone of spread so the guns are not laser accurate.
+        /// </summary>
+        private Vector3 AimDirection(Vector3 origin, Vector3 aimPoint)
+        {
+            Vector3 direction = aimPoint - origin;
+            direction = direction.sqrMagnitude > 0.0001f ? direction.normalized : transform.forward;
+
+            if (_spreadDegrees <= 0f) return direction;
+
+            return Quaternion.Euler(
+                Random.Range(-_spreadDegrees, _spreadDegrees),
+                Random.Range(-_spreadDegrees, _spreadDegrees),
+                0f) * direction;
         }
 
         /// <summary>
@@ -406,9 +513,24 @@ namespace BattleSky.Network
         private void Fire()
         {
             if (_bulletPrefab == null) return;
+            if (_target == null) return;
 
-            Vector3 direction = transform.forward;
-            Vector3 muzzle = GetMuzzlePosition(direction);
+            // Fire discipline: only shoot when the target is inside the gun
+            // range and roughly in front of the nose.
+            Vector3 toTarget = _target.position - transform.position;
+            float distance = toTarget.magnitude;
+            if (distance < _minFireRange || distance > _maxFireRange) return;
+            if (distance > 0.0001f) toTarget /= distance;
+            if (Vector3.Dot(transform.forward, toTarget) <= 0.7f) return;
+
+            // Lead the shot: aim at the place the target will be when the
+            // bolt arrives.
+            Vector3 aimPoint = PredictTargetPoint(transform.position, _muzzleVelocity);
+
+            Transform point = NextFirePoint();
+            Vector3 origin = point != null ? point.position : transform.position + transform.forward * 6f;
+            Vector3 direction = AimDirection(origin, aimPoint);
+            Vector3 muzzle = GetMuzzlePosition(origin, direction);
 
             GameObject bolt = Instantiate(_bulletPrefab, muzzle, Quaternion.LookRotation(direction));
             var proj = bolt.GetComponent<Projectile>();
@@ -421,15 +543,11 @@ namespace BattleSky.Network
         }
 
         /// <summary>
-        /// Muzzle position for the next bolt: the left and right battery
-        /// alternate, and the bolt always starts clear of the hull so it
-        /// never shoots itself.
+        /// Muzzle position for the next bolt: the bolt always starts clear
+        /// of the hull so it never shoots itself.
         /// </summary>
-        private Vector3 GetMuzzlePosition(Vector3 direction)
+        private Vector3 GetMuzzlePosition(Vector3 origin, Vector3 direction)
         {
-            Transform point = NextFirePoint();
-            Vector3 origin = point != null ? point.position : transform.position + direction * 6f;
-
             float clearance = _muzzleClearance;
 
             // Make sure the spawn point is beyond the front of the collider.

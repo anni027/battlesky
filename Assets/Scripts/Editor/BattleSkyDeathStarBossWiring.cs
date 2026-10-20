@@ -6,9 +6,9 @@ using BattleSky.Network;
 
 /// <summary>
 /// Turns the hand-authored Death Star prefab (a variant of the downloaded
-/// FBX) into the Level 3 boss: adds the network/battle components, the weak
-/// point and turret anchors, and normalises the station size to the 1000 m
-/// hull radius the level design is built around.
+/// FBX) into the Level 3 boss: adds the network/battle components, the
+/// superlaser anchor and the force field, and normalises the station size
+/// to the 1000 m hull radius the level design is built around.
 ///
 /// The user's own model, hierarchy and material choices are preserved; only
 /// what the boss fight needs is added. Safe to re-run: everything is skipped
@@ -20,12 +20,12 @@ public static class BattleSkyDeathStarBossWiring
 {
     const string PrefabPath = "Assets/models/DeathStar.prefab";
 
-    /// <summary>Matches DeathStar._radius; approach distances, the despawn
-    /// ring and the exhaust-port hit test are all sized for this.</summary>
-    const float HullRadius = 1000f;
+    /// <summary>Force field shader material; the boss tints its emission with it.</summary>
+    const string ForceFieldMaterialPath = "Assets/models/New Material 1.mat";
 
-    /// <summary>Invisible hull origins the boss turrets fire from.</summary>
-    const int TurretPointCount = 4;
+    /// <summary>Matches DeathStar._radius; approach distances and the despawn
+    /// ring are sized for this.</summary>
+    const float HullRadius = 1000f;
 
     [MenuItem("BattleSky/Wire Death Star Boss Prefab")]
     public static void Run()
@@ -37,9 +37,9 @@ public static class BattleSkyDeathStarBossWiring
             // -------------------------------------------------- station size
             root.transform.localPosition = Vector3.zero;
             root.transform.localRotation = Quaternion.identity;
-            // The boss code sizes the exhaust port visual, its anchors and the
-            // collider for an x2000 root, so keep that and counter-scale the
-            // model children instead.
+            // The boss code sizes the superlaser anchor and the collider for
+            // an x2000 root, so keep that and counter-scale the model children
+            // instead.
             root.transform.localScale = Vector3.one * 2000f;
 
             // The old 50 m station carried eight visible turret spheres; the
@@ -52,6 +52,17 @@ public static class BattleSkyDeathStarBossWiring
             }
             for (int i = 0; i < legacyBumps.Count; i++)
                 Object.DestroyImmediate(legacyBumps[i].gameObject);
+
+            // The station no longer has an exhaust port, so the old anchor has
+            // no meaning any more: drop it instead of leaving a child that
+            // nothing looks for any more.
+            var legacyExhaustAnchors = new System.Collections.Generic.List<Transform>();
+            foreach (Transform child in root.transform)
+            {
+                if (child.name.StartsWith("ExhaustPortAnchor")) legacyExhaustAnchors.Add(child);
+            }
+            for (int i = 0; i < legacyExhaustAnchors.Count; i++)
+                Object.DestroyImmediate(legacyExhaustAnchors[i].gameObject);
 
             var modelRenderers = root.GetComponentsInChildren<MeshRenderer>(true);
             if (modelRenderers.Length == 0)
@@ -98,49 +109,50 @@ public static class BattleSkyDeathStarBossWiring
             if (deathStar == null) deathStar = root.AddComponent<DeathStar>();
 
             // ------------------------------------------------------ anchors
-            Transform exhaust = GetOrCreate(root.transform, "ExhaustPortAnchor");
-            exhaust.localPosition = new Vector3(0f, 0f, 0.5f); // +Z pole: the weak point
-            exhaust.localRotation = Quaternion.identity;
-            exhaust.localScale = Vector3.one;
-
             Transform dish = GetOrCreate(root.transform, "SuperlaserDish");
             dish.localPosition = FindDishLocalPoint(root, modelRenderers);
             if (dish.localPosition.sqrMagnitude > 0.0001f)
                 dish.localRotation = Quaternion.LookRotation(dish.localPosition.normalized, Vector3.up);
             dish.localScale = Vector3.one;
 
-            // Four invisible turret origins on the hull surface. The root is
-            // scaled x2000, so a local radius of 0.5 puts them 1000 m out; they
-            // carry no mesh, renderer or collider.
-            var turretPoints = new Transform[TurretPointCount];
-            for (int i = 0; i < TurretPointCount; i++)
+            // The boss fight is a clean station: no turret bumps and no turret
+            // origins, the crew fights the hull and the force field only.
+            var legacyTurretPoints = new System.Collections.Generic.List<Transform>();
+            foreach (Transform child in root.transform)
             {
-                float angle = Mathf.PI * 2f * i / 4f;
-                Vector3 dir = new Vector3(Mathf.Cos(angle), 0.35f, Mathf.Sin(angle)).normalized;
-                Transform point = GetOrCreate(root.transform, "TurretPoint_" + (i + 1));
-                point.localPosition = dir * 0.5f;
-                point.localRotation = Quaternion.LookRotation(dir, Vector3.up);
-                point.localScale = Vector3.one;
-                turretPoints[i] = point;
+                if (child.name.StartsWith("TurretPoint_")) legacyTurretPoints.Add(child);
             }
+            for (int i = 0; i < legacyTurretPoints.Count; i++)
+                Object.DestroyImmediate(legacyTurretPoints[i].gameObject);
 
             // ------------------------------------------------------- fields
             var serialized = new SerializedObject(deathStar);
             serialized.FindProperty("_radius").floatValue = HullRadius;
-            serialized.FindProperty("_exhaustPortHitRadius").floatValue = 260f;
+            // The station is a boss: heavy armour, the force field is the wall.
+            serialized.FindProperty("_maxSurfaceHealth").intValue = 1200;
+            serialized.FindProperty("_surfaceDamageMultiplier").floatValue = 0.25f;
+            // The white force field that shields the hull in stage one.
+            serialized.FindProperty("_forceFieldMaxHealth").floatValue = 900f;
+            serialized.FindProperty("_forceFieldRadius").floatValue = 1.25f;
             serialized.FindProperty("_superlaserRange").floatValue = 5000f;
             serialized.FindProperty("_superlaserBeamRadius").floatValue = 48f;
             serialized.FindProperty("_superlaserDamageRadius").floatValue = 40f;
             serialized.FindProperty("_explosionRadius").floatValue = 200f;
-            serialized.FindProperty("_exhaustPortAnchor").objectReferenceValue = exhaust;
             serialized.FindProperty("_superlaserDish").objectReferenceValue = dish;
 
-            SerializedProperty turretPointArray = serialized.FindProperty("_turretPoints");
-            if (turretPointArray != null)
+            // The force field material drives the shield's emission colour.
+            Material forceFieldMaterial = AssetDatabase.LoadAssetAtPath<Material>(ForceFieldMaterialPath);
+            if (forceFieldMaterial == null)
             {
-                turretPointArray.arraySize = turretPoints.Length;
-                for (int i = 0; i < turretPoints.Length; i++)
-                    turretPointArray.GetArrayElementAtIndex(i).objectReferenceValue = turretPoints[i];
+                Debug.LogError("[BossWiring] missing force field material at " + ForceFieldMaterialPath);
+            }
+            else
+            {
+                SerializedProperty forceFieldMaterialProp = serialized.FindProperty("_forceFieldMaterial");
+                if (forceFieldMaterialProp == null)
+                    Debug.LogError("[BossWiring] DeathStar has no _forceFieldMaterial field, so the force field stays untinted");
+                else
+                    forceFieldMaterialProp.objectReferenceValue = forceFieldMaterial;
             }
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
@@ -157,7 +169,7 @@ public static class BattleSkyDeathStarBossWiring
                 // plain prefab, so the scene's serialized references have to be
                 // re-pointed or Mirror loses its spawn registration.
                 FixSceneReferences();
-                Debug.Log($"[BossWiring] wired boss prefab: dish anchor on the model dish, {TurretPointCount} turret points, 1000 m hull");
+                Debug.Log($"[BossWiring] wired boss prefab: dish anchor on the model dish, white force field ({ForceFieldMaterialPath}), 1000 m armoured hull");
                 Debug.Log("=== BossWiring done ===");
             }
             else
@@ -285,7 +297,6 @@ public static class BattleSkyDeathStarBossWiring
     }
 
     static bool IsBossAnchor(string name) =>
-        name.StartsWith("ExhaustPortAnchor") ||
         name.StartsWith("SuperlaserDish") ||
         name.StartsWith("TurretPoint_");
 

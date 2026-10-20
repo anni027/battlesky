@@ -314,7 +314,7 @@ MonoBehaviour:
   _shieldHealth: 400
   _shieldRechargeRate: 25
   _shieldRechargeDelay: 4
-  _fighterPrefab: {fileID: 400001, guid: c4d5e6f7a8b60718293a4b5c6d7e8f14, type: 3}
+  _fighterPrefab: {fileID: 2685739933255013657, guid: c4d5e6f7a8b60718293a4b5c6d7e8f14, type: 3}
   _fighterCount: 3
   _fighterSpawnInterval: 15
   _fighterLaunchDistance: 22

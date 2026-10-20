@@ -167,7 +167,7 @@ MonoBehaviour:
   syncDirection: 0
   syncMode: 0
   syncInterval: 0
-  enemyPrefab: {fileID: 400001, guid: c4d5e6f7a8b60718293a4b5c6d7e8f14, type: 3}
+  enemyPrefab: {fileID: 2685739933255013657, guid: c4d5e6f7a8b60718293a4b5c6d7e8f14, type: 3}
   capitalShipPrefab: {fileID: 1935449385074705188, guid: aedfe35dadc5ca64d8cdd628a4204cb5, type: 3}
   deathStarPrefab: {fileID: 511555960000499013, guid: 08d0ad302593dc347bb57eedb843300b, type: 3}
   spawnRate: 0.5
@@ -476,7 +476,7 @@ MonoBehaviour:
   - {fileID: 1132141501487463321, guid: 0455f3f93242c604cb19ff50b7af5baa, type: 3}
   - {fileID: 200001, guid: e5bfaf6172809a0b8d6e7f8091a2b3c4, type: 3}
   - {fileID: 300001, guid: f6c0b0728391a0b8c7d8e9f0a1b2c3d4, type: 3}
-  - {fileID: 400001, guid: c4d5e6f7a8b60718293a4b5c6d7e8f14, type: 3}
+  - {fileID: 2685739933255013657, guid: c4d5e6f7a8b60718293a4b5c6d7e8f14, type: 3}
   - {fileID: 1935449385074705188, guid: aedfe35dadc5ca64d8cdd628a4204cb5, type: 3}
   - {fileID: 511555960000499013, guid: 08d0ad302593dc347bb57eedb843300b, type: 3}
   exceptionsDisconnect: 1
